@@ -1,2 +1,2 @@
 # 90percentart.github.io
-90percentart.com
+90percent.art
