@@ -1,0 +1,46 @@
+html,body {
+    height:  100vh;
+    margin: 0px;
+    padding: 0px;
+}
+
+.btn {
+    font-size: 25px;
+	border-radius: 10px;
+    background-color: white;
+    border-color: #D3D3D3;
+    color: black;
+    margin: 5px;
+    padding: 8px;
+}
+
+.btn:hover{
+    background-color: black;
+    border-color: black;
+    color: white;
+}
+
+.btn:active, .btn:focus{
+    background-color: #8ad5e6 !important;
+    border-color: #8ad5e6 !important;
+    color: white !important;
+}
+
+#logo{
+	margin: -25px;
+}
+
+#my-store-64694392{
+	padding-right: 20% !important;
+	padding-left:  20% !important;
+}
+
+#buttons{
+	width: 100%;
+}
+
+#mysvg{
+	width: 100%;
+	max-width: 500px;
+	height: auto;
+}
