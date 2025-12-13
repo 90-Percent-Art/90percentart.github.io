@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-F9BNT2RJ0C"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);} 
+      gtag('js', new Date());
+      gtag('config', 'G-F9BNT2RJ0C');
+    </script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>90% Art | Make</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" crossorigin="anonymous">
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+    <!-- p5.svg addon for experimental SVG export -->
+    <script src="https://cdn.jsdelivr.net/npm/p5.js-svg@1.1.0/p5.svg.min.js"></script>
+    <style>
+        body { background: #ffffff; }
+        #make-sketch canvas { width: 100% !important; height: auto !important; border-radius: 12px; }
+        .sketch-frame { background: #fdfdfd; border: 1px solid #ededed; border-radius: 12px; padding: 12px; }
+        .control-card { background: #f8f9fb; border: 1px solid #e5e8ef; border-radius: 12px; padding: 18px; }
+        .control-card h3 { letter-spacing: 0.4px; }
+        .control-label { display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem; margin-bottom: 4px; }
+        .control-label span.value { font-weight: 600; color: #111; font-variant-numeric: tabular-nums; }
+        .control-card input[type=range] { width: 100%; }
+        .control-actions .btn { margin: 4px 6px 0 0; font-size: 16px; padding: 8px 14px; }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="d-flex justify-content-center mb-3" id="logo">
+            <img class="svg" src="/assets/interactivelogo.svg" alt="90 Percent Art logo"/>
+        </div>
+        <div class="d-flex flex-wrap justify-content-center mb-4" id="buttons">
+            <a role="button" class="btn btn-outline-primary" href="index.html">Home</a>
+            <a role="button" class="btn btn-outline-primary" href="http://www.instagram.com/90percent.art">Instagram</a>
+            <a role="button" class="btn btn-outline-primary" href="https://twitter.com/90percentart">Twitter</a>
+            <a role="button" class="btn btn-outline-primary" href="https://github.com/90-Percent-Art">Github</a>
+            <a role="button" class="btn btn-outline-primary" href="https://90percentart.blogspot.com/">Blog</a>
+            <a role="button" class="btn btn-outline-primary" href="store.html">Shop</a>
+            <a role="button" class="btn btn-outline-primary" href="make.html">Make</a>
+        </div>
+
+        <div class="row align-items-stretch">
+            <div class="col-lg-8 mb-4">
+                <div class="sketch-frame shadow-sm h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div style="flex:1">
+                            <label for="sketchSelector" class="mb-0 font-weight-bold">Sketch</label>
+                            <select id="sketchSelector" class="form-control form-control-sm">
+                                <option value="cmyk" selected>CMYK — Line Circle Grid</option>
+                                <option value="circlesFromLines">Circles From Lines</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="make-sketch" class="w-100"></div>
+                </div>
+            </div>
+
+            <div class="col-lg-4 mb-4">
+                <div class="control-card shadow-sm h-100">
+                    <h3 class="h5 font-weight-bold mb-2">Parameters</h3>
+                    <p class="text-muted small mb-3">Tweak the sliders to reshape the motion drawing. Each adjustment steers the p5.js system in real time.</p>
+
+                    <div id="dynamicParams"></div>
+
+                    <div id="staticControls">
+                    <div class="mb-3">
+                        <label class="control-label" for="shapeCount">
+                            <span>Shape count</span>
+                            <span class="value" id="shapeCountValue">90</span>
+                        </label>
+                        <input type="range" id="shapeCount" min="20" max="180" value="90">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="control-label" for="orbitSize">
+                            <span>Orbit size</span>
+                            <span class="value" id="orbitSizeValue">180</span>
+                        </label>
+                        <input type="range" id="orbitSize" min="80" max="260" value="180">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="control-label" for="speed">
+                            <span>Drift speed</span>
+                            <span class="value" id="speedValue">0.012</span>
+                        </label>
+                        <input type="range" id="speed" min="4" max="26" value="12">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="control-label" for="hueShift">
+                            <span>Hue shift</span>
+                            <span class="value" id="hueShiftValue">200</span>
+                        </label>
+                        <input type="range" id="hueShift" min="0" max="360" value="200">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="control-label" for="trail">
+                            <span>Trail fade</span>
+                            <span class="value" id="trailValue">16</span>
+                        </label>
+                        <input type="range" id="trail" min="6" max="36" value="16">
+                    </div>
+                    </div>
+
+                    <div class="control-actions d-flex flex-wrap">
+                        <button id="randomize" class="btn btn-outline-primary" type="button">Randomize</button>
+                        <button id="pause" class="btn btn-outline-primary" type="button">Pause</button>
+                        <button id="savePng" class="btn btn-outline-primary" type="button">Save PNG</button>
+                        <button id="saveSvg" class="btn btn-outline-primary" type="button">Save SVG</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls + wiring (keeps same UI behavior as before) -->
+    <script>
+        const sliders = {
+            shapeCount: document.getElementById('shapeCount'),
+            orbitSize: document.getElementById('orbitSize'),
+            speed: document.getElementById('speed'),
+            hueShift: document.getElementById('hueShift'),
+            trail: document.getElementById('trail')
+        };
+
+        const labels = {
+            shapeCount: document.getElementById('shapeCountValue'),
+            orbitSize: document.getElementById('orbitSizeValue'),
+            speed: document.getElementById('speedValue'),
+            hueShift: document.getElementById('hueShiftValue'),
+            trail: document.getElementById('trailValue')
+        };
+
+        // global controls object used by sketches
+        window.controls = {
+            shapeCount: Number(sliders.shapeCount.value),
+            orbitSize: Number(sliders.orbitSize.value),
+            speed: Number(sliders.speed.value) / 1000,
+            hueShift: Number(sliders.hueShift.value),
+            trail: Number(sliders.trail.value)
+        };
+
+        // placeholder bridge used by UI to call the current sketch
+        window.sketchAPI = {
+            regenerate: function() {},
+            togglePause: function() { return false; }
+        };
+
+        function syncControls() {
+            window.controls.shapeCount = Number(sliders.shapeCount.value);
+            window.controls.orbitSize = Number(sliders.orbitSize.value);
+            window.controls.speed = Number(sliders.speed.value) / 1000;
+            window.controls.hueShift = Number(sliders.hueShift.value);
+            window.controls.trail = Number(sliders.trail.value);
+
+            labels.shapeCount.textContent = sliders.shapeCount.value;
+            labels.orbitSize.textContent = sliders.orbitSize.value;
+            labels.speed.textContent = window.controls.speed.toFixed(3);
+            labels.hueShift.textContent = sliders.hueShift.value;
+            labels.trail.textContent = sliders.trail.value;
+        }
+
+        Object.keys(sliders).forEach(function(key) {
+            sliders[key].addEventListener('input', function() {
+                syncControls();
+                // try to nudge the current sketch to regenerate on shapeCount change
+                if (key === 'shapeCount' && typeof window.sketchAPI.regenerate === 'function') {
+                    window.sketchAPI.regenerate();
+                }
+            });
+        });
+
+        document.getElementById('randomize').addEventListener('click', function() {
+            if (window.sketchAPI && typeof window.sketchAPI.randomize === 'function') {
+                window.sketchAPI.randomize();
+                return;
+            }
+            sliders.shapeCount.value = Math.floor(Math.random() * 120) + 40;
+            sliders.orbitSize.value = Math.floor(Math.random() * 150) + 90;
+            sliders.speed.value = Math.floor(Math.random() * 18) + 6;
+            sliders.hueShift.value = Math.floor(Math.random() * 360);
+            sliders.trail.value = Math.floor(Math.random() * 24) + 8;
+            syncControls();
+            if (typeof window.sketchAPI.regenerate === 'function') window.sketchAPI.regenerate();
+        });
+
+        document.getElementById('pause').addEventListener('click', function(event) {
+            var isPaused = window.sketchAPI.togglePause();
+            event.target.textContent = isPaused ? 'Resume' : 'Pause';
+        });
+
+        document.getElementById('savePng').addEventListener('click', function() {
+            if (window.sketchAPI && typeof window.sketchAPI.savePNG === 'function') {
+                window.sketchAPI.savePNG();
+            }
+        });
+
+        document.getElementById('saveSvg').addEventListener('click', function() {
+            if (window.sketchAPI && typeof window.sketchAPI.saveSVG === 'function') {
+                window.sketchAPI.saveSVG();
+            } else {
+                alert('SVG export not available in this sketch.');
+            }
+        });
+
+        // initial sync
+        syncControls();
+    </script>
+
+    <!-- load sketches + adapter -->
+    <script src="scripts/sketches/cmykCircles.js"></script>
+    <script src="scripts/sketches/circlesFromLines.js"></script>
+    <script src="scripts/makeSketch.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" crossorigin="anonymous"></script>
+</body>
+</html>

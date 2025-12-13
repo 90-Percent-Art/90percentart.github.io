@@ -1,0 +1,108 @@
+window.sketches = window.sketches || {};
+window.sketches['cmyk'] = function(p) {
+    var colorGrid = [];
+    var angleGrid = [];
+    var startColor = [0,18,34,37];
+    var endColor = [34,16,0,37];
+    var margin = 100;
+    var paused = false;
+
+    var api = {
+        params: [
+            { id: 'gridRows', label: 'Grid rows', type: 'range', min: 5, max: 80, step: 1, value: 20 },
+            { id: 'gridCols', label: 'Grid columns', type: 'range', min: 5, max: 80, step: 1, value: 20 },
+            { id: 'margin', label: 'Margin', type: 'range', min: 0, max: 300, step: 10, value: 100 }
+        ],
+        regenerate: function() { try { p.redraw(); } catch(e) {} },
+        togglePause: function() { paused = !paused; return paused; },
+        setParam: function(name, val) {
+            if (name === 'gridRows') api.params[0].value = val;
+            if (name === 'gridCols') api.params[1].value = val;
+            if (name === 'margin') api.params[2].value = val;
+        },
+        saveSVG: function() { try { var ts = new Date().toISOString().replace(/[:.]/g,'-'); p.save('90percentart-cmyk-'+ts+'.svg'); } catch(e){} }
+    };
+
+    p.registerSketchAPI = function(register) { if (typeof register === 'function') register(api); };
+
+    p.setup = function() {
+        var canvas = p.createCanvas(1200, 1200, p.SVG);
+        canvas.parent(document.getElementById('make-sketch'));
+        p.strokeWeight(1);
+        p.noLoop();
+    };
+
+    p.draw = function() {
+        p.background(255);
+        var rows = api.params[0].value;
+        var cols = api.params[1].value;
+        margin = api.params[2].value;
+
+        colorGrid = makeColorGrid(rows,cols, startColor, endColor);
+        angleGrid = makeAnglerGrid(rows,cols,0.1);
+
+        var spacing = 50;
+        for (var i=0;i<rows;i++){
+            for (var j=0;j<cols;j++){
+                p.push();
+                p.translate(margin + i*spacing, margin + j*spacing);
+                var f = colorGrid[i][j];
+                p.stroke(p.color(f[0], f[1], f[2]));
+                drawLineCircle(0,0,50,50,f, angleGrid[i][j]*2*p.PI);
+                p.pop();
+            }
+        }
+    };
+
+    function drawLineCircle(x,y, d, n, cmy, theta){
+        var r = d/2;
+        var yloc = 0;
+        var stepSize = d/n;
+        p.push();
+        p.translate(x,y);
+        p.rotate(theta);
+        for (var l = 1; l < n; l++){
+            p.stroke(getRandomColor(cmy));
+            var xloc = Math.sqrt(Math.max(0, r*r - yloc*yloc));
+            p.line(-xloc, yloc, xloc, yloc);
+            p.line(-xloc, -yloc, xloc, -yloc);
+            yloc += stepSize;
+        }
+        p.line(-r,0,r,0);
+        p.pop();
+    }
+
+    function getRandomColor(cmyk){
+        var c = cmyk[0], m = cmyk[1], y = cmyk[2], k = cmyk[3];
+        var total = c+m+y+k;
+        var rval = p.random(0,1);
+        if (rval < c/total) return p.color('cyan');
+        if (rval < (c+m)/total) return p.color('magenta');
+        if (rval < (c+m+y)/total) return p.color('yellow');
+        return p.color('black');
+    }
+
+    function makeColorGrid(nrow, ncol, start, end){
+        var grid = new Array(nrow);
+        for (var i=0;i<nrow;i++){
+            grid[i] = new Array(ncol);
+            for (var j=0;j<ncol;j++) grid[i][j] = arrayLerp(start,end,i/nrow);
+        }
+        return grid;
+    }
+
+    function makeAnglerGrid(nrow, ncol, size){
+        var grid = new Array(nrow);
+        for (var i=0;i<nrow;i++){
+            grid[i] = new Array(ncol);
+            for (var j=0;j<ncol;j++) grid[i][j] = p.noise(i*size,j*size);
+        }
+        return grid;
+    }
+
+    function arrayLerp(first, second, pct){
+        var result = [];
+        for (var k=0;k<first.length;k++) result.push(first[k]*(1-pct) + second[k]*pct);
+        return result;
+    }
+};
