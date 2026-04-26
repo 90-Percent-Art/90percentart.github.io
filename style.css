@@ -26,8 +26,22 @@ html,body {
     color: white !important;
 }
 
+.btn[aria-current="page"]{
+    background-color: rgba(0, 0, 0, 0.1);
+    border-color: #D3D3D3;
+    color: black;
+}
+
+.btn[aria-current="page"]:hover{
+    background-color: rgba(0, 0, 0, 0.18);
+    border-color: black;
+    color: black;
+}
+
 #logo{
-	margin: -25px;
+    width: 100%;
+    margin: 0 auto 12px;
+    padding-top: 24px;
 }
 
 #my-store-64694392{
@@ -37,10 +51,20 @@ html,body {
 
 #buttons{
 	width: 100%;
+    margin-bottom: 24px;
 }
 
 #mysvg{
 	width: 100%;
-	max-width: 500px;
+	max-width: 450px;
 	height: auto;
+}
+
+#logo .svg,
+#logo .replaced-svg,
+#logo svg{
+	width: 100%;
+	max-width: 450px;
+	height: auto;
+    display: block;
 }

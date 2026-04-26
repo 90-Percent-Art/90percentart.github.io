@@ -14,6 +14,8 @@
     <title>90% Art | Make</title>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" crossorigin="anonymous">
     <link rel="stylesheet" type="text/css" href="style.css">
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="scripts/interactiveSVG.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
     <!-- p5.svg addon for experimental SVG export -->
     <script src="https://cdn.jsdelivr.net/npm/p5.js-svg@1.1.0/p5.svg.min.js"></script>
@@ -26,22 +28,42 @@
         .control-label { display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem; margin-bottom: 4px; }
         .control-label span.value { font-weight: 600; color: #111; font-variant-numeric: tabular-nums; }
         .control-card input[type=range] { width: 100%; }
-        .control-actions .btn { margin: 4px 6px 0 0; font-size: 16px; padding: 8px 14px; }
+        .control-card input[type=color] { width: 100%; height: 34px; padding: 2px 3px; cursor: pointer; border-radius: 6px; }
+        .param-group { border-top: 1px solid #e5e8ef; padding-top: 12px; margin-top: 12px; }
+        .param-group:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+        .param-group summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; font-weight: 600; color: #111; }
+        .param-group summary::-webkit-details-marker { display: none; }
+        .param-group summary::after { content: '+'; font-size: 18px; line-height: 1; color: #666; }
+        .param-group[open] summary::after { content: '−'; }
+        .param-group-body { padding-top: 12px; }
+        .control-actions .btn { margin: 4px 4px 0 0; font-size: 13px; padding: 5px 10px; }
+        .control-actions { flex-wrap: nowrap; }
+        .panel-tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid #e5e8ef; }
+        .panel-tab { border: 0; background: transparent; color: #667085; padding: 8px 0; margin-right: 18px; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; border-bottom: 2px solid transparent; }
+        .panel-tab.active { color: #111; border-bottom-color: #111; }
+        .panel-view { display: none; }
+        .panel-view.active { display: block; }
+        .code-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .code-toolbar .btn { margin: 0; font-size: 12px; padding: 5px 10px; }
+        #codeEditor { width: 100%; min-height: 620px; resize: vertical; font-family: Consolas, "Courier New", monospace; font-size: 12px; line-height: 1.45; border: 1px solid #d7dce5; border-radius: 10px; padding: 12px; background: #fff; color: #111; }
+        #codeStatus { min-height: 20px; font-size: 12px; color: #666; margin-top: 8px; }
+        #codeStatus.error { color: #b42318; }
+        #codeStatus.success { color: #067647; }
     </style>
 </head>
 <body>
-    <div class="container py-4">
-        <div class="d-flex justify-content-center mb-3" id="logo">
-            <img class="svg" src="/assets/interactivelogo.svg" alt="90 Percent Art logo"/>
+    <div class="container">
+        <div class="d-flex justify-content-center" id="logo">
+            <img class="svg" src="assets/interactivelogo.svg" alt="90 Percent Art logo"/>
         </div>
-        <div class="d-flex flex-wrap justify-content-center mb-4" id="buttons">
+        <div class="d-flex flex-wrap justify-content-center" id="buttons">
             <a role="button" class="btn btn-outline-primary" href="index.html">Home</a>
             <a role="button" class="btn btn-outline-primary" href="http://www.instagram.com/90percent.art">Instagram</a>
             <a role="button" class="btn btn-outline-primary" href="https://twitter.com/90percentart">Twitter</a>
             <a role="button" class="btn btn-outline-primary" href="https://github.com/90-Percent-Art">Github</a>
             <a role="button" class="btn btn-outline-primary" href="https://90percentart.blogspot.com/">Blog</a>
-            <a role="button" class="btn btn-outline-primary" href="store.html">Shop</a>
-            <a role="button" class="btn btn-outline-primary" href="make.html">Make</a>
+            <a role="button" class="btn btn-outline-primary" href="shop.html">Shop</a>
+            <a role="button" class="btn btn-outline-primary" href="make.html" aria-current="page">Make</a>
         </div>
 
         <div class="row align-items-stretch">
@@ -51,19 +73,35 @@
                         <div style="flex:1">
                             <label for="sketchSelector" class="mb-0 font-weight-bold">Sketch</label>
                             <select id="sketchSelector" class="form-control form-control-sm">
-                                <option value="cmyk" selected>CMYK — Line Circle Grid</option>
-                                <option value="circlesFromLines">Circles From Lines</option>
+                                <option value="cmyk" data-script="scripts/sketches/cmykFlowCircles.js" selected>CMYK Flow</option>
+                                <option value="circlesFromLines" data-script="scripts/sketches/circlesFromLines.js">Circles From Lines</option>
+                                <option value="zigzag" data-script="scripts/sketches/zigzag.js">Zigzag</option>
                             </select>
                         </div>
                     </div>
-                    <div id="make-sketch" class="w-100"></div>
+                    <div class="panel-tabs" role="tablist" aria-label="Make workspace tabs">
+                        <button id="sketchTab" class="panel-tab active" type="button" data-view="sketchPanel" aria-selected="true">Art</button>
+                        <button id="codeTab" class="panel-tab" type="button" data-view="codePanel" aria-selected="false">Code</button>
+                    </div>
+                    <div id="sketchPanel" class="panel-view active">
+                        <div id="make-sketch" class="w-100"></div>
+                    </div>
+                    <div id="codePanel" class="panel-view">
+                        <div class="code-toolbar">
+                            <button id="reloadCode" class="btn btn-outline-primary btn-sm" type="button">Reload Source</button>
+                            <button id="applyCode" class="btn btn-outline-primary btn-sm" type="button">Apply Code</button>
+                            <button id="resetCode" class="btn btn-outline-primary btn-sm" type="button">Reset Sketch</button>
+                        </div>
+                        <textarea id="codeEditor" spellcheck="false"></textarea>
+                        <div id="codeStatus"></div>
+                    </div>
                 </div>
             </div>
 
             <div class="col-lg-4 mb-4">
                 <div class="control-card shadow-sm h-100">
                     <h3 class="h5 font-weight-bold mb-2">Parameters</h3>
-                    <p class="text-muted small mb-3">Tweak the sliders to reshape the motion drawing. Each adjustment steers the p5.js system in real time.</p>
+                    <p class="text-muted small mb-3">Tweak the sliders to reshape the active sketch. Switch the left panel to code when you want to inspect or edit the source.</p>
 
                     <div id="dynamicParams"></div>
 
@@ -210,15 +248,117 @@
             }
         });
 
+        const panelTabs = Array.from(document.querySelectorAll('.panel-tab'));
+        const panelViews = Array.from(document.querySelectorAll('.panel-view'));
+        const codeEditor = document.getElementById('codeEditor');
+        const codeStatus = document.getElementById('codeStatus');
+        const reloadCodeButton = document.getElementById('reloadCode');
+        const applyCodeButton = document.getElementById('applyCode');
+        const resetCodeButton = document.getElementById('resetCode');
+        const sketchSelector = document.getElementById('sketchSelector');
+
+        function setCodeStatus(message, type) {
+            codeStatus.textContent = message || '';
+            codeStatus.className = type ? type : '';
+        }
+
+        function setActivePanel(viewId) {
+            panelTabs.forEach(function(tab) {
+                var active = tab.getAttribute('data-view') === viewId;
+                tab.classList.toggle('active', active);
+                tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            panelViews.forEach(function(view) {
+                view.classList.toggle('active', view.id === viewId);
+            });
+        }
+
+        panelTabs.forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                setActivePanel(tab.getAttribute('data-view'));
+            });
+        });
+
+        function currentScriptPath() {
+            var option = sketchSelector.options[sketchSelector.selectedIndex];
+            return option ? option.getAttribute('data-script') : null;
+        }
+
+        async function loadCurrentSketchSource() {
+            var path = currentScriptPath();
+            if (!path) {
+                codeEditor.value = '';
+                setCodeStatus('No script path found for this sketch.', 'error');
+                return '';
+            }
+            try {
+                setCodeStatus('Loading source...');
+                var response = await fetch(path, { cache: 'no-store' });
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                var source = await response.text();
+                codeEditor.value = source;
+                setCodeStatus('Loaded ' + path, 'success');
+                return source;
+            } catch (error) {
+                setCodeStatus('Could not load sketch source: ' + error.message, 'error');
+                return '';
+            }
+        }
+
+        function applyCurrentSketchSource() {
+            try {
+                var source = codeEditor.value;
+                if (!source.trim()) {
+                    setCodeStatus('Code editor is empty.', 'error');
+                    return;
+                }
+                (0, eval)(source);
+                if (window.makeSketchApp && typeof window.makeSketchApp.remakeCurrent === 'function') {
+                    window.makeSketchApp.remakeCurrent();
+                } else if (typeof sketchSelector.dispatchEvent === 'function') {
+                    sketchSelector.dispatchEvent(new Event('change'));
+                }
+                setCodeStatus('Applied current code to this browser session.', 'success');
+            } catch (error) {
+                setCodeStatus('Apply failed: ' + error.message, 'error');
+            }
+        }
+
+        reloadCodeButton.addEventListener('click', loadCurrentSketchSource);
+        applyCodeButton.addEventListener('click', applyCurrentSketchSource);
+        resetCodeButton.addEventListener('click', function() {
+            loadCurrentSketchSource().then(function() {
+                try {
+                    if (!codeEditor.value.trim()) {
+                        setCodeStatus('Reset failed: source is empty.', 'error');
+                        return;
+                    }
+                    (0, eval)(codeEditor.value);
+                    if (window.makeSketchApp && typeof window.makeSketchApp.remakeCurrent === 'function') {
+                        window.makeSketchApp.remakeCurrent();
+                    }
+                    setCodeStatus('Reset current sketch to file source.', 'success');
+                } catch (error) {
+                    setCodeStatus('Reset failed: ' + error.message, 'error');
+                }
+            });
+        });
+
+        sketchSelector.addEventListener('change', function() {
+            loadCurrentSketchSource();
+        });
+
         // initial sync
         syncControls();
+        loadCurrentSketchSource();
     </script>
 
     <!-- load sketches + adapter -->
-    <script src="scripts/sketches/cmykCircles.js"></script>
-    <script src="scripts/sketches/cmykGrid.js"></script>
+    <script src="scripts/sketches/sharedPaperControls.js"></script>
+    <script src="scripts/sketches/cmykFlowCircles.js"></script>
     <script src="scripts/sketches/circlesFromLines.js"></script>
-    
+    <script src="scripts/sketches/zigzag.js"></script>
+
     <script src="scripts/makeSketch.js"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" crossorigin="anonymous"></script>

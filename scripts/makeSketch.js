@@ -181,8 +181,77 @@
             try {
                 var paramsContainer = document.getElementById('dynamicParams');
                 var staticControls = document.getElementById('staticControls');
+                var groupMeta = {
+                    general: { title: 'General', open: true },
+                    paper: { title: 'Paper', open: false },
+                    advanced: { title: 'Advanced', open: false }
+                };
                 // clear existing dynamic
                 if (paramsContainer) paramsContainer.innerHTML = '';
+
+                function getParamGroup(pdef) {
+                    var id = pdef.id || '';
+                    if (id === 'paperSize' || id === 'margin') return 'paper';
+                    if (id === 'density' || id === 'penWidthMm' || id === 'hatchWeight' || id === 'alpha') return 'advanced';
+                    return 'general';
+                }
+
+                function ensureGroup(name) {
+                    var existing = document.getElementById('param-group-' + name);
+                    if (existing) return existing.querySelector('.param-group-body');
+
+                    var details = document.createElement('details');
+                    details.className = 'param-group';
+                    details.id = 'param-group-' + name;
+                    if (groupMeta[name] && groupMeta[name].open) details.open = true;
+
+                    var summary = document.createElement('summary');
+                    summary.textContent = (groupMeta[name] && groupMeta[name].title) ? groupMeta[name].title : name;
+
+                    var body = document.createElement('div');
+                    body.className = 'param-group-body';
+
+                    details.appendChild(summary);
+                    details.appendChild(body);
+                    paramsContainer.appendChild(details);
+                    return body;
+                }
+
+                function getParamValue(id) {
+                    var input = document.getElementById(id);
+                    if (!input) return undefined;
+                    return input.value;
+                }
+
+                function normalizeValues(values) {
+                    return Array.isArray(values) ? values.map(String) : [String(values)];
+                }
+
+                function applyConditionalUI(params) {
+                    (params || []).forEach(function(pdef) {
+                        var row = document.querySelector('[data-param-id="' + pdef.id + '"]');
+                        if (!row) return;
+
+                        if (pdef.visibleWhen && pdef.visibleWhen.param) {
+                            var currentValue = getParamValue(pdef.visibleWhen.param);
+                            var allowedValues = normalizeValues(pdef.visibleWhen.values || []);
+                            row.style.display = allowedValues.indexOf(String(currentValue)) !== -1 ? '' : 'none';
+                        } else {
+                            row.style.display = '';
+                        }
+
+                        var labelSpan = row.querySelector('.param-label-text');
+                        if (labelSpan) {
+                            var labelText = pdef.label || pdef.id;
+                            if (pdef.labelByValue && pdef.labelByValue.param) {
+                                var labelValue = getParamValue(pdef.labelByValue.param);
+                                var mapped = pdef.labelByValue.values || {};
+                                labelText = Object.prototype.hasOwnProperty.call(mapped, labelValue) ? mapped[labelValue] : (mapped.default || labelText);
+                            }
+                            labelSpan.textContent = labelText;
+                        }
+                    });
+                }
 
                 var params = (registeredApi && registeredApi.params) ? registeredApi.params : null;
                 if (params && params.length && paramsContainer) {
@@ -191,10 +260,12 @@
                     params.forEach(function(pdef){
                         var row = document.createElement('div');
                         row.className = 'mb-3';
+                        row.setAttribute('data-param-id', pdef.id);
 
                         var label = document.createElement('label');
                         label.className = 'control-label';
                         var spanLabel = document.createElement('span');
+                        spanLabel.className = 'param-label-text';
                         spanLabel.textContent = pdef.label || pdef.id;
                         var spanValue = document.createElement('span');
                         spanValue.className = 'value';
@@ -223,6 +294,11 @@
                             (pdef.options||[]).forEach(function(opt){
                                 var o = document.createElement('option'); o.value = opt.value; o.textContent = opt.label||opt.value; if (opt.value==pdef.value) o.selected=true; input.appendChild(o);
                             });
+                        } else if (pdef.type === 'color') {
+                            input = document.createElement('input');
+                            input.type = 'color';
+                            input.value = pdef.value || '#000000';
+                            if (spanValue) spanValue.style.display = 'none'; // swatch is its own indicator
                         } else {
                             input = document.createElement('input'); input.type = 'text'; input.value = pdef.value || '';
                         }
@@ -240,19 +316,39 @@
                             if (registeredApi && typeof registeredApi.setParam === 'function') {
                                 try { registeredApi.setParam(pdef.id, val); } catch(e){}
                             }
+                            applyConditionalUI(params);
                             if (typeof window.sketchAPI.regenerate === 'function') window.sketchAPI.regenerate();
                         });
 
                         row.appendChild(label);
                         row.appendChild(input);
-                        paramsContainer.appendChild(row);
+                        ensureGroup(getParamGroup(pdef)).appendChild(row);
                     });
+                    applyConditionalUI(params);
                 } else {
                     if (staticControls) staticControls.style.display = '';
+                }
+
+                // show/hide pause button based on sketch capability
+                var pauseBtn = document.getElementById('pause');
+                if (pauseBtn) {
+                    var supportsPause = !(registeredApi && registeredApi.hasPause === false);
+                    pauseBtn.style.display = supportsPause ? '' : 'none';
+                    pauseBtn.textContent = 'Pause'; // reset label on sketch switch
                 }
             } catch(e) { console.error('build param UI error', e); }
         }, 80);
     }
+
+    window.makeSketchApp = {
+        make: make,
+        remakeCurrent: function() {
+            make((selector && selector.value) ? selector.value : (lastSketchName || 'default'));
+        },
+        getCurrentSketchName: function() {
+            return (selector && selector.value) ? selector.value : lastSketchName;
+        }
+    };
 
     // create initial sketch based on selector value
     if (selector) {
