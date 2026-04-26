@@ -34,6 +34,27 @@ window.sketches['zigzag'] = function(p) {
         regenerate: function() { resizeIfNeeded(); p.redraw(); },
         togglePause: function() { paused = !paused; return paused; },
         randomize: function() { randomizeAll(); p.redraw(); },
+        saveSVG: function() {
+            var dims = paper.getPaperPixels(PARAMS.paperSize);
+            var strokeWidth = Math.max(0.5, paper.mmToPixels(PARAMS.HATCH_WEIGHT_MM));
+            var ts = new Date().toISOString().replace(/[:.]/g,'-');
+            var filename = '90percentart-zigzag-' + ts + '.svg';
+            var parts = [];
+
+            parts.push('<?xml version="1.0" encoding="UTF-8"?>');
+            parts.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + dims.width + '" height="' + dims.height + '" viewBox="0 0 ' + dims.width + ' ' + dims.height + '">');
+            parts.push('<rect x="0" y="0" width="' + dims.width + '" height="' + dims.height + '" fill="#ffffff"/>');
+            parts.push('<rect x="1" y="1" width="' + (dims.width - 2) + '" height="' + (dims.height - 2) + '" fill="none" stroke="#b4b4b4" stroke-width="2"/>');
+            parts.push('<g style="mix-blend-mode:multiply">');
+
+            for (var bi = 0; bi < blocks.length; bi++) {
+                exportZigBlock(parts, blocks[bi], strokeWidth);
+            }
+
+            parts.push('</g>');
+            parts.push('</svg>');
+            downloadSvgString(parts.join('\n'), filename);
+        },
         setParam: function(name, val) {
             var pdef = api.params.find(function(x){ return x.id === name; });
             if (pdef) pdef.value = val;
@@ -279,6 +300,28 @@ window.sketches['zigzag'] = function(p) {
         g.remove();
     }
 
+    function exportZigBlock(parts, block, strokeWidth) {
+        var sp = PARAMS.HATCH_SPACING;
+        var jt = PARAMS.HATCH_JITTER;
+        p.randomSeed(block.seed);
+
+        for (var i = 0; i < block.rects.length; i++) {
+            var rect = block.rects[i];
+            var poly = rectCorners(rect.bl, rect.w, rect.h);
+            exportHatchPolygon(parts, poly, block.angles[i], sp, jt, strokeWidth, block.colors.rects[i] || block.colors.rects[0]);
+        }
+
+        for (var j = 0; j < block.rects.length - 1; j++) {
+            var rA = block.rects[j], rB = block.rects[j + 1];
+            var a = rectCorners(rA.bl, rA.w, rA.h);
+            var b = rectCorners(rB.bl, rB.w, rB.h);
+            var connPoly = [a[2], a[3], b[0], b[1]];
+            var connAng = Math.atan2(Math.sin(block.angles[j]) + Math.sin(block.angles[j + 1]),
+                                     Math.cos(block.angles[j]) + Math.cos(block.angles[j + 1]));
+            exportHatchPolygon(parts, connPoly, connAng, sp, jt, strokeWidth, block.colors.conns[j] || block.colors.rects[j] || block.colors.rects[0]);
+        }
+    }
+
     // version of hatchPolygon that draws into a graphics buffer g
     function hatchPolygonG(g, poly, angle, spacing, jitter, weight) {
         var dir={x:Math.cos(angle),y:Math.sin(angle)};
@@ -309,6 +352,38 @@ window.sketches['zigzag'] = function(p) {
         }
     }
 
+    function exportHatchPolygon(parts, poly, angle, spacing, jitter, strokeWidth, color) {
+        var dir = {x:Math.cos(angle), y:Math.sin(angle)};
+        var nrm = {x:-dir.y, y:dir.x};
+        var proj = function(pt){ return nrm.x*pt.x + nrm.y*pt.y; };
+        var minP = Infinity, maxP = -Infinity;
+        poly.forEach(function(pt){ var pr = proj(pt); if (pr < minP) minP = pr; if (pr > maxP) maxP = pr; });
+        var pad = 2 * spacing;
+        var minK = Math.floor((minP - pad) / spacing);
+        var maxK = Math.ceil((maxP + pad) / spacing);
+        var stroke = colorToSvg(color);
+
+        for (var k = minK; k <= maxK; k++) {
+            var off = k * spacing;
+            var p0 = {x:-5000*dir.x + off*nrm.x, y:-5000*dir.y + off*nrm.y};
+            var p1 = {x: 5000*dir.x + off*nrm.x, y: 5000*dir.y + off*nrm.y};
+            var ts = [];
+            for (var i = 0; i < poly.length; i++) {
+                var A = poly[i], B = poly[(i+1)%poly.length];
+                var t = segIntersectT(p0,p1,A,B);
+                if (t !== null) ts.push(t);
+            }
+            ts.sort(function(a,b){ return a-b; });
+            for (var j = 0; j + 1 < ts.length; j += 2) {
+                var AA = {x:p0.x + (p1.x-p0.x)*ts[j],   y:p0.y + (p1.y-p0.y)*ts[j]};
+                var BB = {x:p0.x + (p1.x-p0.x)*ts[j+1], y:p0.y + (p1.y-p0.y)*ts[j+1]};
+                var jx = jitter ? p.randomGaussian(0, jitter) : 0;
+                var jy = jitter ? p.randomGaussian(0, jitter) : 0;
+                appendZigHatch(parts, {x:AA.x + jx, y:AA.y + jy}, {x:BB.x + jx, y:BB.y + jy}, stroke, strokeWidth);
+            }
+        }
+    }
+
     function drawHatchLineG(g, A, B) {
         if (!PARAMS.CURVE_ENABLED) { g.line(A.x,A.y,B.x,B.y); return; }
         var dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1;
@@ -325,9 +400,62 @@ window.sketches['zigzag'] = function(p) {
         g.endShape();
     }
 
+    function appendZigHatch(parts, A, B, stroke, strokeWidth) {
+        if (!PARAMS.CURVE_ENABLED) {
+            parts.push('<line x1="' + fmt(A.x) + '" y1="' + fmt(A.y) + '" x2="' + fmt(B.x) + '" y2="' + fmt(B.y) + '" ' + strokeAttrs(stroke, strokeWidth) + '/>');
+            return;
+        }
+        var dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx,dy)||1;
+        var nx = -dy/len, ny = dx/len;
+        var phase = p.random(p.TWO_PI);
+        var lenScale = Math.min(len/30,1);
+        var amp = PARAMS.CURVE_MAG*lenScale;
+        var freq = PARAMS.CURVE_FREQ*lenScale+0.0001;
+        var pts = [];
+        for (var i = 0; i <= 8; i++) {
+            var t = i/8;
+            var off = Math.sin(phase+t*freq*p.TWO_PI)*amp;
+            pts.push(fmt(A.x+dx*t+nx*off) + ',' + fmt(A.y+dy*t+ny*off));
+        }
+        parts.push('<polyline points="' + pts.join(' ') + '" ' + strokeAttrs(stroke, strokeWidth) + '/>');
+    }
+
     function randomizeAll() {
         blocks.length=0;
         var n=PARAMS.BLOCK_COUNT>0?PARAMS.BLOCK_COUNT:Math.floor(p.random(1,7));
         for (var i=0;i<n;i++) blocks.push(makeZigBlock());
+    }
+
+    function colorToSvg(col) {
+        return {
+            stroke: '#' + [p.red(col), p.green(col), p.blue(col)].map(function(v){
+                var hex = Math.round(v).toString(16);
+                return hex.length === 1 ? '0' + hex : hex;
+            }).join(''),
+            opacity: (typeof col._getAlpha === 'function' ? col._getAlpha() : PARAMS.ALPHA) / 255
+        };
+    }
+
+    function strokeAttrs(stroke, strokeWidth) {
+        return 'fill="none" stroke="' + stroke.stroke + '" stroke-opacity="' + fmt(stroke.opacity) + '" stroke-width="' + fmt(strokeWidth) + '" stroke-linecap="square" stroke-linejoin="round"';
+    }
+
+    function fmt(n) {
+        return Number(n).toFixed(3);
+    }
+
+    function downloadSvgString(str, filename) {
+        var blob = new Blob([str], { type: 'image/svg+xml;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() {
+            a.remove();
+            URL.revokeObjectURL(url);
+        }, 1000);
     }
 };

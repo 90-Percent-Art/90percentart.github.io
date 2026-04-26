@@ -92,14 +92,40 @@
                 }
 
                 // experimental fallback: try to re-render the sketch into an SVG renderer and download
-                if (typeof p5 === 'undefined' || (!p5.RendererSVG && !p5.SVG)) {
-                    alert('SVG export requires p5.svg addon.');
+                if (typeof p5 === 'undefined') {
+                    alert('SVG export requires p5.');
                     return;
                 }
+                var svgRenderers = [];
+                if (currentP5 && currentP5.SVG) svgRenderers.push(currentP5.SVG);
+                if (typeof p5 !== 'undefined' && p5.SVG) svgRenderers.push(p5.SVG);
+                if (typeof window !== 'undefined' && window.SVG) svgRenderers.push(window.SVG);
+                if (typeof p5 !== 'undefined' && p5.RendererSVG) svgRenderers.push(p5.RendererSVG);
+
+                var svgRenderer = svgRenderers.length ? svgRenderers[0] : null;
                 var sketchFn = (window.sketches && window.sketches[lastSketchName]) ? window.sketches[lastSketchName] : window.sketches['default'];
                 if (!sketchFn) {
                     alert('No sketch available for SVG export.');
                     return;
+                }
+                var ts = new Date().toISOString().replace(/[:.]/g,'-');
+                var filename = '90percentart-'+ (lastSketchName||'sketch') + '-' + ts + '.svg';
+                var fileHandlePromise = null;
+
+                if (window.showSaveFilePicker) {
+                    try {
+                        fileHandlePromise = window.showSaveFilePicker({
+                            suggestedName: filename,
+                            types: [{
+                                description: 'SVG file',
+                                accept: { 'image/svg+xml': ['.svg'] }
+                            }]
+                        });
+                    } catch (pickerErr) {
+                        if (pickerErr && pickerErr.name === 'AbortError') return;
+                        console.warn('showSaveFilePicker unavailable for SVG export', pickerErr);
+                        fileHandlePromise = null;
+                    }
                 }
 
                 // create hidden container for SVG rendering
@@ -108,11 +134,24 @@
                 hidden.style.left = '-99999px';
                 hidden.style.top = '0';
                 document.body.appendChild(hidden);
+                var originalGetElementById = document.getElementById.bind(document);
+                document.getElementById = function(id) {
+                    if (id === 'make-sketch') return hidden;
+                    return originalGetElementById(id);
+                };
 
                 var tempP5 = new p5(function(p) {
                     // force createCanvas to use SVG renderer if available
                     var origCreate = p.createCanvas;
-                    p.createCanvas = function(w,h) { try { return origCreate.call(p, w, h, p.SVG); } catch(e) { return origCreate.call(p, w, h); } };
+                    p.createCanvas = function(w,h) {
+                        if (svgRenderer) {
+                            try { return origCreate.call(p, w, h, svgRenderer); } catch(e) {}
+                        }
+                        for (var i = 0; i < svgRenderers.length; i++) {
+                            try { return origCreate.call(p, w, h, svgRenderers[i]); } catch(e) {}
+                        }
+                        return origCreate.call(p, w, h);
+                    };
                     // ensure single-frame render
                     p.setup = function() {};
                     p.draw = function() {};
@@ -124,34 +163,83 @@
                     }
                 }, hidden);
 
-                // wait a short moment for p5 to run setup/draw, then grab svg
                 setTimeout(function() {
                     try {
-                        var svg = hidden.querySelector('svg');
-                        if (!svg) {
-                            alert('SVG export failed: no <svg> element rendered.');
-                        } else {
+                        if (tempP5 && typeof tempP5.redraw === 'function') tempP5.redraw();
+                    } catch (redrawErr) {
+                        console.warn('Temporary SVG redraw failed', redrawErr);
+                    }
+                }, 50);
+
+                // wait a short moment for p5 to run setup/draw, then grab svg
+                setTimeout(async function() {
+                    try {
+                        async function exportSvgWithRetry(attempt) {
+                            var svg = null;
+                            if (tempP5 && tempP5._renderer && tempP5._renderer.svg) {
+                                svg = tempP5._renderer.svg;
+                            }
+                            if (!svg) svg = hidden.querySelector('svg');
+                            if (!svg) {
+                                alert('SVG export failed: no <svg> element rendered. The p5.svg renderer may not be loading on this page.');
+                                return;
+                            }
+
                             var serializer = new XMLSerializer();
                             var str = serializer.serializeToString(svg);
+                            var hasDrawnContent = !!svg.querySelector('path, line, rect, circle, ellipse, polyline, polygon, g');
+                            if ((!str || !str.trim() || str.trim() === '<svg xmlns="http://www.w3.org/2000/svg"></svg>' || !hasDrawnContent) && attempt < 2) {
+                                if (tempP5 && typeof tempP5.redraw === 'function') tempP5.redraw();
+                                await new Promise(function(resolve) { setTimeout(resolve, 250); });
+                                return exportSvgWithRetry(attempt + 1);
+                            }
+                            if (!str || !str.trim() || str.trim() === '<svg xmlns="http://www.w3.org/2000/svg"></svg>' || !hasDrawnContent) {
+                                alert('SVG export failed: rendered SVG was empty.');
+                                return;
+                            }
+
+                            if (fileHandlePromise) {
+                                try {
+                                    var fileHandle = await fileHandlePromise;
+                                    var writable = await fileHandle.createWritable();
+                                    await writable.write(str);
+                                    await writable.close();
+                                    return;
+                                } catch (fileErr) {
+                                    if (fileErr && fileErr.name === 'AbortError') return;
+                                    console.warn('Native file save failed, falling back to download link', fileErr);
+                                }
+                            }
+
                             var blob = new Blob([str], {type: 'image/svg+xml;charset=utf-8'});
                             var url = URL.createObjectURL(blob);
                             var a = document.createElement('a');
                             a.href = url;
-                            var ts = new Date().toISOString().replace(/[:.]/g,'-');
-                            a.download = '90percentart-'+ (lastSketchName||'sketch') + '-' + ts + '.svg';
+                            a.download = filename;
+                            a.rel = 'noopener';
+                            a.style.display = 'none';
                             document.body.appendChild(a);
-                            a.click();
-                            a.remove();
-                            URL.revokeObjectURL(url);
+                            try {
+                                a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                            } catch (clickErr) {
+                                a.click();
+                            }
+                            setTimeout(function() {
+                                a.remove();
+                                URL.revokeObjectURL(url);
+                            }, 1000);
                         }
+
+                        await exportSvgWithRetry(0);
                     } catch (e) {
                         console.error('SVG export error', e);
                         alert('SVG export failed: ' + e.message);
                     } finally {
+                        document.getElementById = originalGetElementById;
                         try { tempP5.remove(); } catch(e) {}
                         hidden.remove();
                     }
-                }, 250);
+                }, 400);
             }
         };
         // also expose a randomize helper

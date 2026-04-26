@@ -7,6 +7,7 @@ window.sketches['cmyk'] = function(p) {
         paperSize:  '8.5x11',
         margin:     1,
         shape:      'boxes',
+        viewMode:   'normal',
         fieldSeed:  1,
         circleSize: 50,
         paddingMm:  0,
@@ -45,6 +46,11 @@ window.sketches['cmyk'] = function(p) {
                 { value: 'boxes', label: 'Boxes' },
                 { value: 'circles', label: 'Circles' }
               ]},
+            { id: 'viewMode', label: 'View mode', type: 'select', value: 'normal',
+              options: [
+                { value: 'normal', label: 'Normal' },
+                { value: 'multiply', label: 'Multiply' }
+              ]},
             { id: 'circleSize', label: 'Shape size (px)', type: 'range', min: 15, max: 150, step: 5,  value: 50  },
             { id: 'paddingMm', label: 'Padding (mm)', type: 'range', min: 0, max: 10, step: 0.1, value: 0,
               _toInternal: function(v){ return v; } },
@@ -78,12 +84,77 @@ window.sketches['cmyk'] = function(p) {
             resizeIfNeeded();
             p.redraw();
         },
+        saveSVG: function() {
+            var dims = paper.getPaperPixels(PARAMS.paperSize);
+            var marginPx  = paper.getMarginPixels(PARAMS.margin);
+            var paddingPx = paper.mmToPixels(PARAMS.paddingMm);
+            var cellSize  = PARAMS.circleSize;
+            var availW    = dims.width  - 2 * marginPx;
+            var availH    = dims.height - 2 * marginPx;
+            var grid      = resolveGrid(availW, availH, cellSize + paddingPx, PARAMS.composition);
+            var cols      = grid.cols;
+            var rows      = grid.rows;
+            var contentW  = cols * cellSize + Math.max(0, cols - 1) * paddingPx;
+            var contentH  = rows * cellSize + Math.max(0, rows - 1) * paddingPx;
+            var offsetX   = marginPx + (availW - contentW) / 2;
+            var offsetY   = marginPx + (availH - contentH) / 2;
+            var strokeW   = Math.max(0.5, paper.mmToPixels(PARAMS.penWidthMm));
+            var gradRad   = p.radians(PARAMS.gradAngle);
+            var gdx       = Math.cos(gradRad);
+            var gdy       = Math.sin(gradRad);
+            var startCMYK = PARAMS.startCMYK;
+            var endCMYK   = PARAMS.endCMYK;
+            var pMin = Infinity;
+            var pMax = -Infinity;
+            var svgParts = [];
+            var ts = new Date().toISOString().replace(/[:.]/g,'-');
+            var filename = '90percentart-cmyk-' + ts + '.svg';
+            p.noiseSeed(PARAMS.fieldSeed);
+
+            for (var ix = 0; ix < cols; ix++) {
+                for (var jy = 0; jy < rows; jy++) {
+                    var proj = (offsetX + (ix + 0.5) * cellSize) * gdx +
+                               (offsetY + (jy + 0.5) * cellSize) * gdy;
+                    if (proj < pMin) pMin = proj;
+                    if (proj > pMax) pMax = proj;
+                }
+            }
+
+            svgParts.push('<?xml version="1.0" encoding="UTF-8"?>');
+            svgParts.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + dims.width + '" height="' + dims.height + '" viewBox="0 0 ' + dims.width + ' ' + dims.height + '">');
+            if (PARAMS.viewMode === 'multiply') svgParts.push('<g style="mix-blend-mode:multiply">');
+            svgParts.push('<rect x="1" y="1" width="' + (dims.width - 2) + '" height="' + (dims.height - 2) + '" fill="none" stroke="#b4b4b4" stroke-width="2"/>');
+
+            for (var i = 0; i < cols; i++) {
+                for (var j = 0; j < rows; j++) {
+                    var cx = offsetX + i * (cellSize + paddingPx) + cellSize / 2;
+                    var cy = offsetY + j * (cellSize + paddingPx) + cellSize / 2;
+                    var t  = (pMax > pMin) ? ((cx * gdx + cy * gdy) - pMin) / (pMax - pMin) : 0;
+                    var cmyk  = arrayLerp(startCMYK, endCMYK, t);
+                    var angle = p.noise(i * PARAMS.noiseScale, j * PARAMS.noiseScale) * p.TWO_PI;
+                    var rng   = makeRng(cellSeed(i, j));
+
+                    if (PARAMS.shape === 'boxes') {
+                        exportLineBox(svgParts, cx, cy, cellSize * 0.92, cellSize * 0.92, cmyk, angle,
+                            p.radians(PARAMS.boxRotationDeg) + (PARAMS.boxRotationMode === 'field' ? angle : 0),
+                            strokeW, rng);
+                    } else {
+                        exportLineCircle(svgParts, cx, cy, cellSize * 0.92, cmyk, angle, strokeW, rng);
+                    }
+                }
+            }
+
+            if (PARAMS.viewMode === 'multiply') svgParts.push('</g>');
+            svgParts.push('</svg>');
+            downloadSvgString(svgParts.join('\n'), filename);
+        },
         setParam: function(name, val) {
             var pdef = api.params.find(function(x){ return x.id === name; });
             if (pdef) pdef.value = val;
             if (name === 'paperSize')  { PARAMS.paperSize = val; resizeIfNeeded(); }
             if (name === 'margin')     PARAMS.margin     = Number(val);
             if (name === 'shape')      PARAMS.shape = val;
+            if (name === 'viewMode')   PARAMS.viewMode = val;
             if (name === 'circleSize') PARAMS.circleSize = Number(val);
             if (name === 'paddingMm')  PARAMS.paddingMm = Number(val);
             if (name === 'boxRotationDeg') PARAMS.boxRotationDeg = Number(val);
@@ -160,6 +231,7 @@ window.sketches['cmyk'] = function(p) {
         var startCMYK = PARAMS.startCMYK;
         var endCMYK   = PARAMS.endCMYK;
 
+        p.blendMode(PARAMS.viewMode === 'multiply' ? p.MULTIPLY : p.BLEND);
         p.strokeWeight(Math.max(0.5, paper.mmToPixels(PARAMS.penWidthMm)));
         for (var i = 0; i < cols; i++) {
             for (var j = 0; j < rows; j++) {
@@ -184,6 +256,7 @@ window.sketches['cmyk'] = function(p) {
                 }
             }
         }
+        p.blendMode(p.BLEND);
     };
 
     function drawLineCircle(d, cmyk, theta) {
@@ -204,6 +277,20 @@ window.sketches['cmyk'] = function(p) {
         p.pop();
     }
 
+    function exportLineCircle(parts, cx, cy, d, cmyk, theta, strokeW, rng) {
+        var r = d / 2;
+        var stepSize = (paper.DPI / 25.4) / PARAMS.density;
+        var cosT = Math.cos(theta);
+        var sinT = Math.sin(theta);
+        for (var yloc = 0; yloc < r; yloc += stepSize) {
+            var xloc = Math.sqrt(Math.max(0, r * r - yloc * yloc));
+            appendRotatedLine(parts, cx, cy, -xloc, yloc, xloc, yloc, cosT, sinT, cmykColorString(cmyk, rng), strokeW);
+            if (yloc > 0) {
+                appendRotatedLine(parts, cx, cy, -xloc, -yloc, xloc, -yloc, cosT, sinT, cmykColorString(cmyk, rng), strokeW);
+            }
+        }
+    }
+
     function drawLineBox(w, h, cmyk, theta, boxTheta) {
         var halfW = w / 2;
         var halfH = h / 2;
@@ -219,6 +306,23 @@ window.sketches['cmyk'] = function(p) {
             }
         }
         p.pop();
+    }
+
+    function exportLineBox(parts, cx, cy, w, h, cmyk, theta, boxTheta, strokeW, rng) {
+        var halfW = w / 2;
+        var halfH = h / 2;
+        var relTheta = theta - boxTheta;
+        var stepSize = (paper.DPI / 25.4) / PARAMS.density;
+        var maxOffset = Math.abs(halfW * Math.sin(relTheta)) + Math.abs(halfH * Math.cos(relTheta));
+        var cosB = Math.cos(boxTheta);
+        var sinB = Math.sin(boxTheta);
+
+        for (var yloc = 0; yloc <= maxOffset; yloc += stepSize) {
+            appendBoxExportLine(parts, cx, cy, halfW, halfH, yloc, relTheta, cosB, sinB, cmyk, strokeW, rng);
+            if (yloc > 0) {
+                appendBoxExportLine(parts, cx, cy, halfW, halfH, -yloc, relTheta, cosB, sinB, cmyk, strokeW, rng);
+            }
+        }
     }
 
     function drawClippedBoxLine(halfW, halfH, yloc, theta, cmyk) {
@@ -240,6 +344,29 @@ window.sketches['cmyk'] = function(p) {
 
         p.stroke(getRandomColor(cmyk));
         p.line(clipped.x1, clipped.y1, clipped.x2, clipped.y2);
+    }
+
+    function appendBoxExportLine(parts, cx, cy, halfW, halfH, yloc, theta, cosB, sinB, cmyk, strokeW, rng) {
+        var cosT = Math.cos(theta);
+        var sinT = Math.sin(theta);
+        var lineHalf = Math.sqrt(halfW * halfW + halfH * halfH) * 1.5;
+        var x1 = -lineHalf;
+        var y1 = yloc;
+        var x2 = lineHalf;
+        var y2 = yloc;
+
+        var ax = x1 * cosT - y1 * sinT;
+        var ay = x1 * sinT + y1 * cosT;
+        var bx = x2 * cosT - y2 * sinT;
+        var by = x2 * sinT + y2 * cosT;
+        var clipped = clipLineToRect(ax, ay, bx, by, -halfW, halfW, -halfH, halfH);
+        if (!clipped) return;
+
+        var gx1 = cx + clipped.x1 * cosB - clipped.y1 * sinB;
+        var gy1 = cy + clipped.x1 * sinB + clipped.y1 * cosB;
+        var gx2 = cx + clipped.x2 * cosB - clipped.y2 * sinB;
+        var gy2 = cy + clipped.x2 * sinB + clipped.y2 * cosB;
+        appendSvgLine(parts, gx1, gy1, gx2, gy2, cmykColorString(cmyk, rng), strokeW);
     }
 
     function clipLineToRect(x1, y1, x2, y2, xmin, xmax, ymin, ymax) {
@@ -331,9 +458,59 @@ window.sketches['cmyk'] = function(p) {
         return p.color('black');
     }
 
+    function cmykColorString(cmyk, rng) {
+        var c = cmyk[0], m = cmyk[1], y = cmyk[2], k = cmyk[3];
+        var total = c + m + y + k;
+        if (total <= 0) return '#ffffff';
+        var rval = rng() * total;
+        if (rval < c)         return '#00ffff';
+        if (rval < c + m)     return '#ff00ff';
+        if (rval < c + m + y) return '#ffff00';
+        return '#000000';
+    }
+
     function arrayLerp(a, b, t) {
         var result = [];
         for (var k = 0; k < a.length; k++) result.push(a[k] * (1 - t) + b[k] * t);
         return result;
+    }
+
+    function appendRotatedLine(parts, cx, cy, x1, y1, x2, y2, cosT, sinT, stroke, strokeW) {
+        var gx1 = cx + x1 * cosT - y1 * sinT;
+        var gy1 = cy + x1 * sinT + y1 * cosT;
+        var gx2 = cx + x2 * cosT - y2 * sinT;
+        var gy2 = cy + x2 * sinT + y2 * cosT;
+        appendSvgLine(parts, gx1, gy1, gx2, gy2, stroke, strokeW);
+    }
+
+    function appendSvgLine(parts, x1, y1, x2, y2, stroke, strokeW) {
+        parts.push('<line x1="' + fmt(x1) + '" y1="' + fmt(y1) + '" x2="' + fmt(x2) + '" y2="' + fmt(y2) + '" stroke="' + stroke + '" stroke-width="' + fmt(strokeW) + '" stroke-linecap="square" fill="none"/>');
+    }
+
+    function fmt(n) {
+        return Number(n).toFixed(3);
+    }
+
+    function makeRng(seed) {
+        var state = (seed >>> 0) || 1;
+        return function() {
+            state = (1664525 * state + 1013904223) >>> 0;
+            return state / 4294967296;
+        };
+    }
+
+    function downloadSvgString(str, filename) {
+        var blob = new Blob([str], { type: 'image/svg+xml;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() {
+            a.remove();
+            URL.revokeObjectURL(url);
+        }, 1000);
     }
 };

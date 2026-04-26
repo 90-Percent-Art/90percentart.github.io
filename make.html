@@ -18,10 +18,11 @@
     <script src="scripts/interactiveSVG.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
     <!-- p5.svg addon for experimental SVG export -->
-    <script src="https://cdn.jsdelivr.net/npm/p5.js-svg@1.1.0/p5.svg.min.js"></script>
+    <script src="https://unpkg.com/p5.js-svg@1.5.1/dist/p5.svg.js"></script>
     <style>
         body { background: #ffffff; }
-        #make-sketch canvas { width: 100% !important; height: auto !important; border-radius: 12px; }
+        #make-sketch { display: flex; justify-content: center; align-items: flex-start; overflow: auto; }
+        #make-sketch canvas, #make-sketch svg { width: 100% !important; height: auto !important; border-radius: 12px; display: block; margin: 0 auto; flex: 0 0 auto; }
         .sketch-frame { background: #fdfdfd; border: 1px solid #ededed; border-radius: 12px; padding: 12px; }
         .control-card { background: #f8f9fb; border: 1px solid #e5e8ef; border-radius: 12px; padding: 18px; }
         .control-card h3 { letter-spacing: 0.4px; }
