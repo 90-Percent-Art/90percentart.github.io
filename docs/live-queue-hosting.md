@@ -12,6 +12,7 @@ Workers with KV storage.
   submit time and stored in that browser's `localStorage`.
 - The Pi app uses `ADMIN_TOKEN` to delete any job and update job status.
 - The active queue is capped by `MAX_ACTIVE`, currently `10`.
+- Each SVG upload is capped by `MAX_SVG_BYTES`, currently `10 MB`.
 
 ## Cloudflare Setup
 

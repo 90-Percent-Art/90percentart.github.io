@@ -482,7 +482,11 @@
                         body: JSON.stringify({ svg: svgStr, sketch_name: sketchId, paper_size: paperSize, orientation: 'portrait' })
                     });
                 }).then(function(r) {
-                    if (!r.ok) throw new Error('Server ' + r.status);
+                    if (!r.ok) {
+                        return r.json().catch(function(){ return {}; }).then(function(data) {
+                            throw new Error((data && data.error) ? data.error : ('Server ' + r.status));
+                        });
+                    }
                     return r.json();
                 }).then(function(data) {
                     var jobId = data.job_id || data.id;
@@ -629,7 +633,11 @@
                             if (deleteToken) headers['X-Delete-Token'] = deleteToken;
                             fetch(getUrl() + '/jobs/' + job.id, { method: 'DELETE', headers: headers })
                                 .then(function(r) {
-                                    if (!r.ok) throw new Error('Server ' + r.status);
+                                    if (!r.ok) {
+                                        return r.json().catch(function(){ return {}; }).then(function(data) {
+                                            throw new Error((data && data.error) ? data.error : ('Server ' + r.status));
+                                        });
+                                    }
                                     forgetDeleteToken(job.id);
                                     fetchAndRenderStrip();
                                 })

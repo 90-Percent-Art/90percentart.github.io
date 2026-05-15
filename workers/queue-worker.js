@@ -1,5 +1,5 @@
 const DEFAULT_MAX_ACTIVE = 10;
-const DEFAULT_MAX_SVG_BYTES = 1024 * 1024;
+const DEFAULT_MAX_SVG_BYTES = 10 * 1024 * 1024;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
