@@ -1,0 +1,4 @@
+
+# Local deploy secrets
+.queue-admin-token.local
+.wrangler/

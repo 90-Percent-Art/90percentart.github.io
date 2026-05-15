@@ -6,9 +6,9 @@ compatibility_date = "2026-05-15"
 #   npx wrangler kv namespace create QUEUE_KV
 # Then paste the returned id below.
 #
-# [[kv_namespaces]]
-# binding = "QUEUE_KV"
-# id = "replace-with-kv-namespace-id"
+[[kv_namespaces]]
+binding = "QUEUE_KV"
+id = "9f8cf04a9f8e4da1b8bbae8d42b39a6c"
 
 [vars]
 MAX_ACTIVE = "10"
