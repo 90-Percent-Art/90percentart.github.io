@@ -1,6 +1,7 @@
 name = "pl0tb0t-queue"
 main = "workers/queue-worker.js"
 compatibility_date = "2026-05-15"
+workers_dev = true
 
 # Create and bind a KV namespace before deploying:
 #   npx wrangler kv namespace create QUEUE_KV

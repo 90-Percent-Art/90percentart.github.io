@@ -45,7 +45,7 @@ npx wrangler deploy
 Cloudflare prints a Worker URL such as:
 
 ```text
-https://pl0tb0t-queue.<account>.workers.dev
+https://pl0tb0t-queue.evanfinkle.workers.dev
 ```
 
 Use that as the Queue server URL in both:
@@ -72,3 +72,11 @@ key to the same value used for `ADMIN_TOKEN`.
 - `X-Delete-Token: <submitter-token>` for the original submitter
 - `X-API-Key: <ADMIN_TOKEN>` for the Pi/admin
 
+
+## Current Beta Endpoint
+
+```text
+https://pl0tb0t-queue.evanfinkle.workers.dev
+```
+
+Set the public site's Queue server URL to this endpoint with a blank key. Set the Pi app's Queue server URL to this endpoint and its key to the value in `.queue-admin-token.local`.
