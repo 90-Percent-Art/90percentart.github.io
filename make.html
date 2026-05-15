@@ -337,11 +337,33 @@
         (function() {
             var STORAGE_URL_KEY = 'pl0tb0t_queue_url';
             var STORAGE_KEY_KEY = 'pl0tb0t_queue_key';
+            var STORAGE_DELETE_TOKENS_KEY = 'pl0tb0t_queue_delete_tokens';
             var DEFAULT_URL = 'http://pl0tb0tpi5:5001';
-            var DEFAULT_KEY = 'pl0tb0t-secret';
+            var DEFAULT_KEY = '';
 
             function getUrl() { return (localStorage.getItem(STORAGE_URL_KEY) || DEFAULT_URL).replace(/\/$/, ''); }
             function getKey() { return localStorage.getItem(STORAGE_KEY_KEY) || DEFAULT_KEY; }
+            function queueHeaders(extra) {
+                var h = extra ? Object.assign({}, extra) : {};
+                var key = getKey();
+                if (key) h['X-API-Key'] = key;
+                return h;
+            }
+            function getDeleteTokens() {
+                try { return JSON.parse(localStorage.getItem(STORAGE_DELETE_TOKENS_KEY) || '{}'); }
+                catch(e) { return {}; }
+            }
+            function saveDeleteToken(jobId, token) {
+                if (!jobId || !token) return;
+                var tokens = getDeleteTokens();
+                tokens[jobId] = token;
+                localStorage.setItem(STORAGE_DELETE_TOKENS_KEY, JSON.stringify(tokens));
+            }
+            function forgetDeleteToken(jobId) {
+                var tokens = getDeleteTokens();
+                delete tokens[jobId];
+                localStorage.setItem(STORAGE_DELETE_TOKENS_KEY, JSON.stringify(tokens));
+            }
 
             function loadQueueCfg() {
                 document.getElementById('queueUrl').value = getUrl();
@@ -456,14 +478,16 @@
                     queueStatus('Sending…', '#888');
                     return fetch(getUrl() + '/jobs', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-API-Key': getKey() },
+                        headers: queueHeaders({ 'Content-Type': 'application/json' }),
                         body: JSON.stringify({ svg: svgStr, sketch_name: sketchId, paper_size: paperSize, orientation: 'portrait' })
                     });
                 }).then(function(r) {
                     if (!r.ok) throw new Error('Server ' + r.status);
                     return r.json();
                 }).then(function(data) {
-                    queueStatus('✓ Queued!  Job #' + data.job_id, '#2a7');
+                    var jobId = data.job_id || data.id;
+                    saveDeleteToken(jobId, data.delete_token);
+                    queueStatus('✓ Queued!  Job #' + jobId, '#2a7');
                     setTimeout(function(){ queueStatus(''); }, 5000);
                     fetchAndRenderStrip();
                 }).catch(function(err) {
@@ -474,7 +498,7 @@
 
             // ── Load job back into editor ──────────────────────────────────────
             function loadJobIntoEditor(jobId) {
-                fetch(getUrl() + '/jobs/' + jobId + '/svg', { headers: { 'X-API-Key': getKey() } })
+                fetch(getUrl() + '/jobs/' + jobId + '/svg', { headers: queueHeaders() })
                     .then(function(r) { return r.text(); })
                     .then(function(svgText) {
                         var snap = extractSnapshot(svgText);
@@ -507,7 +531,7 @@
 
             function loadThumb(jobId, imgEl) {
                 if (_thumbBlobUrls[jobId]) { imgEl.src = _thumbBlobUrls[jobId]; return; }
-                fetch(getUrl() + '/jobs/' + jobId + '/svg', { headers: { 'X-API-Key': getKey() } })
+                fetch(getUrl() + '/jobs/' + jobId + '/svg', { headers: queueHeaders() })
                     .then(function(r) { return r.blob(); })
                     .then(function(blob) {
                         var url = URL.createObjectURL(blob);
@@ -590,26 +614,36 @@
                     footer.appendChild(load);
                     card.appendChild(footer);
 
-                    // Delete button (top-right overlay)
-                    var del = document.createElement('button');
-                    del.className = 'q-card-del';
-                    del.title = 'Remove from queue';
-                    del.textContent = '✕';
-                    del.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        if (!confirm('Remove “' + (job.sketch_name || 'this job') + '” from the queue?')) return;
-                        fetch(getUrl() + '/jobs/' + job.id, { method: 'DELETE', headers: { 'X-API-Key': getKey() } })
-                            .then(function() { fetchAndRenderStrip(); })
-                            .catch(function(err) { alert('Delete failed: ' + err.message); });
-                    });
-                    card.appendChild(del);
+                    // Delete button: visible only for this browser's submissions,
+                    // or when an admin key is configured for the current queue.
+                    var deleteToken = getDeleteTokens()[job.id];
+                    if (deleteToken || getKey()) {
+                        var del = document.createElement('button');
+                        del.className = 'q-card-del';
+                        del.title = deleteToken ? 'Remove your queue item' : 'Admin remove from queue';
+                        del.textContent = '✕';
+                        del.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            if (!confirm('Remove “' + (job.sketch_name || 'this job') + '” from the queue?')) return;
+                            var headers = queueHeaders();
+                            if (deleteToken) headers['X-Delete-Token'] = deleteToken;
+                            fetch(getUrl() + '/jobs/' + job.id, { method: 'DELETE', headers: headers })
+                                .then(function(r) {
+                                    if (!r.ok) throw new Error('Server ' + r.status);
+                                    forgetDeleteToken(job.id);
+                                    fetchAndRenderStrip();
+                                })
+                                .catch(function(err) { alert('Delete failed: ' + err.message); });
+                        });
+                        card.appendChild(del);
+                    }
 
                     container.appendChild(card);
                 });
             }
 
             function fetchAndRenderStrip() {
-                fetch(getUrl() + '/jobs', { headers: { 'X-API-Key': getKey() } })
+                fetch(getUrl() + '/jobs', { headers: queueHeaders() })
                     .then(function(r) { return r.json(); })
                     .then(function(jobs) { renderQueueStrip(jobs); })
                     .catch(function() {});

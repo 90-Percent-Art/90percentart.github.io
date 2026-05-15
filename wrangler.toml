@@ -1,0 +1,18 @@
+name = "pl0tb0t-queue"
+main = "workers/queue-worker.js"
+compatibility_date = "2026-05-15"
+
+# Create and bind a KV namespace before deploying:
+#   npx wrangler kv namespace create QUEUE_KV
+# Then paste the returned id below.
+#
+# [[kv_namespaces]]
+# binding = "QUEUE_KV"
+# id = "replace-with-kv-namespace-id"
+
+[vars]
+MAX_ACTIVE = "10"
+MAX_SVG_BYTES = "1000000"
+
+# Set the admin token as a secret, not in this file:
+#   npx wrangler secret put ADMIN_TOKEN
