@@ -4,7 +4,7 @@ window.sketches['cmyk'] = function(p) {
     var paper = window.makeSketchUtils;
 
     var PARAMS = {
-        paperSize:  '8.5x11',
+        paperSize:  '9x12',
         margin:     1,
         shape:      'boxes',
         viewMode:   'normal',
@@ -17,25 +17,71 @@ window.sketches['cmyk'] = function(p) {
         penWidthMm: 0.4,
         noiseScale: 0.10,
         gradAngle:  0,
-        density:    2,          // lines per mm
-        startCMYK: [0, 18, 34, 37],
-        endCMYK:   [34, 16, 0,  37]
+        density:    2,
+        startColor: '#ff6600',
+        endColor:   '#0066cc',
+        palette: ['#00ffff', '#ff00ff', '#ffff00', '#000000'],
+        viewMode: 'multiply'
     };
 
-    // Convert a hex color string to [C, M, Y, K] probability weights (each 0–100)
-    function hexToCMYK(hex) {
-        var r = parseInt(hex.slice(1, 3), 16) / 255;
-        var g = parseInt(hex.slice(3, 5), 16) / 255;
-        var b = parseInt(hex.slice(5, 7), 16) / 255;
-        var k = 1 - Math.max(r, g, b);
-        if (k >= 1) return [0, 0, 0, 100];
-        var d = 1 - k;
+    // Normalize hex color to [0-1] per-channel RGB array
+    function hexToRgbN(hex) {
         return [
-            Math.round((1 - r - k) / d * 100),
-            Math.round((1 - g - k) / d * 100),
-            Math.round((1 - b - k) / d * 100),
-            Math.round(k * 100)
+            parseInt(hex.slice(1,3),16) / 255,
+            parseInt(hex.slice(3,5),16) / 255,
+            parseInt(hex.slice(5,7),16) / 255
         ];
+    }
+
+    // Lerp two hex colors in RGB space
+    function lerpHex(a, b, t) {
+        var ac = hexToRgbN(a), bc = hexToRgbN(b);
+        return '#' + [0,1,2].map(function(i){
+            var v = Math.round((ac[i] + (bc[i]-ac[i]) * t) * 255).toString(16);
+            return v.length === 1 ? '0'+v : v;
+        }).join('');
+    }
+
+    // Decompose a target hex color into weights for each palette color.
+    // Each weight = 1 / (rgb_distance + epsilon). epsilon=0.30 (in normalized [0-1] space)
+    // gives good overlap: the closest ink dominates (~5x) but others still contribute.
+    // For CMYK palette this approximates the original CMYK decomposition;
+    // for any other palette the same distance math distributes the gradient similarly.
+    function colorDecompose(targetHex) {
+        var pal = PARAMS.palette;
+        var target = hexToRgbN(targetHex);
+        var weights = [], sum = 0, eps = 0.30;
+        for (var i = 0; i < pal.length; i++) {
+            var c = hexToRgbN(pal[i]);
+            var d = Math.sqrt(
+                (target[0]-c[0])*(target[0]-c[0]) +
+                (target[1]-c[1])*(target[1]-c[1]) +
+                (target[2]-c[2])*(target[2]-c[2])
+            );
+            var w = 1 / (d + eps);
+            weights.push(w);
+            sum += w;
+        }
+        if (sum > 0) for (var j = 0; j < weights.length; j++) weights[j] /= sum;
+        return weights;
+    }
+
+    // At gradient position t (0–1), lerp between startColor and endColor then
+    // decompose into palette ink weights. All palette colors overlap everywhere;
+    // the gradient shifts which ink dominates.
+    function paletteWeightsAt(t) {
+        return colorDecompose(lerpHex(PARAMS.startColor, PARAMS.endColor, t));
+    }
+
+    function pickFromWeights(weights, rng) {
+        var pal = PARAMS.palette;
+        var r = rng ? rng() : Math.random();
+        var cumul = 0;
+        for (var i = 0; i < pal.length - 1; i++) {
+            cumul += weights[i];
+            if (r < cumul) return pal[i];
+        }
+        return pal[pal.length - 1];
     }
 
     var api = {
@@ -46,7 +92,7 @@ window.sketches['cmyk'] = function(p) {
                 { value: 'boxes', label: 'Boxes' },
                 { value: 'circles', label: 'Circles' }
               ]},
-            { id: 'viewMode', label: 'View mode', type: 'select', value: 'normal',
+            { id: 'viewMode', label: 'View mode', type: 'select', value: 'multiply',
               options: [
                 { value: 'normal', label: 'Normal' },
                 { value: 'multiply', label: 'Multiply' }
@@ -66,11 +112,25 @@ window.sketches['cmyk'] = function(p) {
             { id: 'gradAngle',  label: 'Gradient angle°', type: 'range', min: 0,   max: 355, step: 5,   value: 0   },
             { id: 'density',    label: 'Density (ln/mm)', type: 'range', min: 10,  max: 30,  step: 1,   value: 20,
               _toInternal: function(v){ return v / 10; } },
-            { id: 'startColor', label: 'Start color', type: 'color', value: '#ff6600' },
-            { id: 'endColor',   label: 'End color',   type: 'color', value: '#0066cc' }
+            { id: 'palette', label: 'Inks', type: 'colorPalette', maxSelect: 6,
+              value: PARAMS.palette.slice(),
+              options: [
+                { value: '#00ffff', label: 'Cyan' },
+                { value: '#ff00ff', label: 'Magenta' },
+                { value: '#ffff00', label: 'Yellow' },
+                { value: '#000000', label: 'Black' },
+                { value: '#e63946', label: 'Red' },
+                { value: '#2196f3', label: 'Blue' },
+                { value: '#ff9800', label: 'Orange' },
+                { value: '#4caf50', label: 'Green' },
+                { value: '#9c27b0', label: 'Purple' },
+                { value: 'custom',  label: 'Custom' }
+              ]},
+            { id: 'startColor', label: 'Gradient start', type: 'color', value: '#ff6600' },
+            { id: 'endColor',   label: 'Gradient end',   type: 'color', value: '#0066cc' }
         ]),
         regenerate: function() { resizeIfNeeded(); p.redraw(); },
-        randomize: function() {
+        reseed: function() {
             PARAMS.fieldSeed = Math.floor(Math.random() * 1e6);
             var ang = Math.floor(Math.random() * 72) * 5;
             setSliderById('gradAngle', ang);
@@ -102,8 +162,6 @@ window.sketches['cmyk'] = function(p) {
             var gradRad   = p.radians(PARAMS.gradAngle);
             var gdx       = Math.cos(gradRad);
             var gdy       = Math.sin(gradRad);
-            var startCMYK = PARAMS.startCMYK;
-            var endCMYK   = PARAMS.endCMYK;
             var pMin = Infinity;
             var pMax = -Infinity;
             var svgParts = [];
@@ -130,16 +188,16 @@ window.sketches['cmyk'] = function(p) {
                     var cx = offsetX + i * (cellSize + paddingPx) + cellSize / 2;
                     var cy = offsetY + j * (cellSize + paddingPx) + cellSize / 2;
                     var t  = (pMax > pMin) ? ((cx * gdx + cy * gdy) - pMin) / (pMax - pMin) : 0;
-                    var cmyk  = arrayLerp(startCMYK, endCMYK, t);
+                    var weights = paletteWeightsAt(t);
                     var angle = p.noise(i * PARAMS.noiseScale, j * PARAMS.noiseScale) * p.TWO_PI;
                     var rng   = makeRng(cellSeed(i, j));
 
                     if (PARAMS.shape === 'boxes') {
-                        exportLineBox(svgParts, cx, cy, cellSize * 0.92, cellSize * 0.92, cmyk, angle,
+                        exportLineBox(svgParts, cx, cy, cellSize * 0.92, cellSize * 0.92, weights, angle,
                             p.radians(PARAMS.boxRotationDeg) + (PARAMS.boxRotationMode === 'field' ? angle : 0),
                             strokeW, rng);
                     } else {
-                        exportLineCircle(svgParts, cx, cy, cellSize * 0.92, cmyk, angle, strokeW, rng);
+                        exportLineCircle(svgParts, cx, cy, cellSize * 0.92, weights, angle, strokeW, rng);
                     }
                 }
             }
@@ -164,8 +222,9 @@ window.sketches['cmyk'] = function(p) {
             if (name === 'noiseScale') PARAMS.noiseScale = Number(val) / 100;
             if (name === 'gradAngle')  PARAMS.gradAngle  = Number(val);
             if (name === 'density')    PARAMS.density    = Number(val) / 10;
-            if (name === 'startColor') PARAMS.startCMYK  = hexToCMYK(val);
-            if (name === 'endColor')   PARAMS.endCMYK    = hexToCMYK(val);
+            if (name === 'startColor') PARAMS.startColor = val;
+            if (name === 'endColor')   PARAMS.endColor   = val;
+            if (name === 'palette')    PARAMS.palette = Array.isArray(val) && val.length ? val : PARAMS.palette;
         }
     };
 
@@ -228,9 +287,6 @@ window.sketches['cmyk'] = function(p) {
             }
         }
 
-        var startCMYK = PARAMS.startCMYK;
-        var endCMYK   = PARAMS.endCMYK;
-
         p.blendMode(PARAMS.viewMode === 'multiply' ? p.MULTIPLY : p.BLEND);
         p.strokeWeight(Math.max(0.5, paper.mmToPixels(PARAMS.penWidthMm)));
         for (var i = 0; i < cols; i++) {
@@ -238,7 +294,7 @@ window.sketches['cmyk'] = function(p) {
                 var cx = offsetX + i * (cellSize + paddingPx) + cellSize / 2;
                 var cy = offsetY + j * (cellSize + paddingPx) + cellSize / 2;
                 var t  = (pMax > pMin) ? ((cx * gdx + cy * gdy) - pMin) / (pMax - pMin) : 0;
-                var cmyk  = arrayLerp(startCMYK, endCMYK, t);
+                var weights = paletteWeightsAt(t);
                 var angle = p.noise(i * PARAMS.noiseScale, j * PARAMS.noiseScale) * p.TWO_PI;
                 p.randomSeed(cellSeed(i, j));
                 if (PARAMS.shape === 'boxes') {
@@ -246,12 +302,12 @@ window.sketches['cmyk'] = function(p) {
                     p.translate(cx, cy);
                     var boxTheta = p.radians(PARAMS.boxRotationDeg);
                     if (PARAMS.boxRotationMode === 'field') boxTheta += angle;
-                    drawLineBox(cellSize * 0.92, cellSize * 0.92, cmyk, angle, boxTheta);
+                    drawLineBox(cellSize * 0.92, cellSize * 0.92, weights, angle, boxTheta);
                     p.pop();
                 } else {
                     p.push();
                     p.translate(cx, cy);
-                    drawLineCircle(cellSize * 0.92, cmyk, angle);
+                    drawLineCircle(cellSize * 0.92, weights, angle);
                     p.pop();
                 }
             }
@@ -259,39 +315,38 @@ window.sketches['cmyk'] = function(p) {
         p.blendMode(p.BLEND);
     };
 
-    function drawLineCircle(d, cmyk, theta) {
+    function drawLineCircle(d, weights, theta) {
         var r = d / 2;
-        // convert lines/mm to px spacing at current DPI (100px = 1 inch = 25.4mm)
         var stepSize = (paper.DPI / 25.4) / PARAMS.density;
         p.push();
         p.rotate(theta);
         for (var yloc = 0; yloc < r; yloc += stepSize) {
             var xloc = Math.sqrt(Math.max(0, r * r - yloc * yloc));
-            p.stroke(getRandomColor(cmyk));
+            p.stroke(getRandomColor(weights));
             p.line(-xloc,  yloc, xloc,  yloc);
             if (yloc > 0) {
-                p.stroke(getRandomColor(cmyk));
+                p.stroke(getRandomColor(weights));
                 p.line(-xloc, -yloc, xloc, -yloc);
             }
         }
         p.pop();
     }
 
-    function exportLineCircle(parts, cx, cy, d, cmyk, theta, strokeW, rng) {
+    function exportLineCircle(parts, cx, cy, d, weights, theta, strokeW, rng) {
         var r = d / 2;
         var stepSize = (paper.DPI / 25.4) / PARAMS.density;
         var cosT = Math.cos(theta);
         var sinT = Math.sin(theta);
         for (var yloc = 0; yloc < r; yloc += stepSize) {
             var xloc = Math.sqrt(Math.max(0, r * r - yloc * yloc));
-            appendRotatedLine(parts, cx, cy, -xloc, yloc, xloc, yloc, cosT, sinT, cmykColorString(cmyk, rng), strokeW);
+            appendRotatedLine(parts, cx, cy, -xloc, yloc, xloc, yloc, cosT, sinT, pickFromWeights(weights, rng), strokeW);
             if (yloc > 0) {
-                appendRotatedLine(parts, cx, cy, -xloc, -yloc, xloc, -yloc, cosT, sinT, cmykColorString(cmyk, rng), strokeW);
+                appendRotatedLine(parts, cx, cy, -xloc, -yloc, xloc, -yloc, cosT, sinT, pickFromWeights(weights, rng), strokeW);
             }
         }
     }
 
-    function drawLineBox(w, h, cmyk, theta, boxTheta) {
+    function drawLineBox(w, h, weights, theta, boxTheta) {
         var halfW = w / 2;
         var halfH = h / 2;
         var relTheta = theta - boxTheta;
@@ -300,15 +355,15 @@ window.sketches['cmyk'] = function(p) {
         p.push();
         p.rotate(boxTheta);
         for (var yloc = 0; yloc <= maxOffset; yloc += stepSize) {
-            drawClippedBoxLine(halfW, halfH, yloc, relTheta, cmyk);
+            drawClippedBoxLine(halfW, halfH, yloc, relTheta, weights);
             if (yloc > 0) {
-                drawClippedBoxLine(halfW, halfH, -yloc, relTheta, cmyk);
+                drawClippedBoxLine(halfW, halfH, -yloc, relTheta, weights);
             }
         }
         p.pop();
     }
 
-    function exportLineBox(parts, cx, cy, w, h, cmyk, theta, boxTheta, strokeW, rng) {
+    function exportLineBox(parts, cx, cy, w, h, weights, theta, boxTheta, strokeW, rng) {
         var halfW = w / 2;
         var halfH = h / 2;
         var relTheta = theta - boxTheta;
@@ -318,14 +373,14 @@ window.sketches['cmyk'] = function(p) {
         var sinB = Math.sin(boxTheta);
 
         for (var yloc = 0; yloc <= maxOffset; yloc += stepSize) {
-            appendBoxExportLine(parts, cx, cy, halfW, halfH, yloc, relTheta, cosB, sinB, cmyk, strokeW, rng);
+            appendBoxExportLine(parts, cx, cy, halfW, halfH, yloc, relTheta, cosB, sinB, weights, strokeW, rng);
             if (yloc > 0) {
-                appendBoxExportLine(parts, cx, cy, halfW, halfH, -yloc, relTheta, cosB, sinB, cmyk, strokeW, rng);
+                appendBoxExportLine(parts, cx, cy, halfW, halfH, -yloc, relTheta, cosB, sinB, weights, strokeW, rng);
             }
         }
     }
 
-    function drawClippedBoxLine(halfW, halfH, yloc, theta, cmyk) {
+    function drawClippedBoxLine(halfW, halfH, yloc, theta, weights) {
         var cosT = Math.cos(theta);
         var sinT = Math.sin(theta);
         var lineHalf = Math.sqrt(halfW * halfW + halfH * halfH) * 1.5;
@@ -342,11 +397,11 @@ window.sketches['cmyk'] = function(p) {
         var clipped = clipLineToRect(ax, ay, bx, by, -halfW, halfW, -halfH, halfH);
         if (!clipped) return;
 
-        p.stroke(getRandomColor(cmyk));
+        p.stroke(getRandomColor(weights));
         p.line(clipped.x1, clipped.y1, clipped.x2, clipped.y2);
     }
 
-    function appendBoxExportLine(parts, cx, cy, halfW, halfH, yloc, theta, cosB, sinB, cmyk, strokeW, rng) {
+    function appendBoxExportLine(parts, cx, cy, halfW, halfH, yloc, theta, cosB, sinB, weights, strokeW, rng) {
         var cosT = Math.cos(theta);
         var sinT = Math.sin(theta);
         var lineHalf = Math.sqrt(halfW * halfW + halfH * halfH) * 1.5;
@@ -366,7 +421,7 @@ window.sketches['cmyk'] = function(p) {
         var gy1 = cy + clipped.x1 * sinB + clipped.y1 * cosB;
         var gx2 = cx + clipped.x2 * cosB - clipped.y2 * sinB;
         var gy2 = cy + clipped.x2 * sinB + clipped.y2 * cosB;
-        appendSvgLine(parts, gx1, gy1, gx2, gy2, cmykColorString(cmyk, rng), strokeW);
+        appendSvgLine(parts, gx1, gy1, gx2, gy2, pickFromWeights(weights, rng), strokeW);
     }
 
     function clipLineToRect(x1, y1, x2, y2, xmin, xmax, ymin, ymax) {
@@ -447,32 +502,10 @@ window.sketches['cmyk'] = function(p) {
         );
     }
 
-    function getRandomColor(cmyk) {
-        var c = cmyk[0], m = cmyk[1], y = cmyk[2], k = cmyk[3];
-        var total = c + m + y + k;
-        if (total <= 0) return p.color(255);
-        var rval = p.random(total);
-        if (rval < c)         return p.color('cyan');
-        if (rval < c + m)     return p.color('magenta');
-        if (rval < c + m + y) return p.color('yellow');
-        return p.color('black');
-    }
-
-    function cmykColorString(cmyk, rng) {
-        var c = cmyk[0], m = cmyk[1], y = cmyk[2], k = cmyk[3];
-        var total = c + m + y + k;
-        if (total <= 0) return '#ffffff';
-        var rval = rng() * total;
-        if (rval < c)         return '#00ffff';
-        if (rval < c + m)     return '#ff00ff';
-        if (rval < c + m + y) return '#ffff00';
-        return '#000000';
-    }
-
-    function arrayLerp(a, b, t) {
-        var result = [];
-        for (var k = 0; k < a.length; k++) result.push(a[k] * (1 - t) + b[k] * t);
-        return result;
+    function getRandomColor(weights) {
+        var c = p.color(pickFromWeights(weights, function(){ return p.random(); }));
+        if (PARAMS.viewMode === 'multiply') c.setAlpha(204);
+        return c;
     }
 
     function appendRotatedLine(parts, cx, cy, x1, y1, x2, y2, cosT, sinT, stroke, strokeW) {

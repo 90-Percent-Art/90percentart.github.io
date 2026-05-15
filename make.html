@@ -21,7 +21,7 @@
     <script src="https://unpkg.com/p5.js-svg@1.5.1/dist/p5.svg.js"></script>
     <style>
         body { background: #ffffff; }
-        #make-sketch { display: flex; justify-content: center; align-items: flex-start; overflow: auto; }
+        #make-sketch { display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: auto; }
         #make-sketch canvas, #make-sketch svg { width: 100% !important; height: auto !important; border-radius: 12px; display: block; margin: 0 auto; flex: 0 0 auto; }
         .sketch-frame { background: #fdfdfd; border: 1px solid #ededed; border-radius: 12px; padding: 12px; }
         .control-card { background: #f8f9fb; border: 1px solid #e5e8ef; border-radius: 12px; padding: 18px; }
@@ -50,6 +50,52 @@
         #codeStatus { min-height: 20px; font-size: 12px; color: #666; margin-top: 8px; }
         #codeStatus.error { color: #b42318; }
         #codeStatus.success { color: #067647; }
+        .palette-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+        .palette-item { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; user-select: none; }
+        .palette-swatch { width: 26px; height: 26px; border-radius: 4px; border: 2px solid #e0e0e0; transition: border-color 0.1s, box-shadow 0.1s; }
+        .palette-item.selected .palette-swatch { border-color: #111; box-shadow: 0 0 0 1px #111; }
+        .palette-item.at-max { opacity: 0.35; cursor: not-allowed; }
+        .palette-label { font-size: 8px; color: #666; line-height: 1; text-align: center; }
+
+        /* ── Print queue strip ── */
+        #queueStrip { margin-top: 20px; margin-bottom: 24px; }
+        #queueStrip h6 { font-size: 13px; font-weight: 700; color: #444; letter-spacing: 0.02em; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        #queueStrip h6 .q-count { font-weight: 400; color: #aaa; font-size: 12px; }
+        #queueStrip h6 .q-refresh { background: none; border: none; color: #aaa; cursor: pointer; font-size: 15px; padding: 0 2px; line-height: 1; }
+        #queueStrip h6 .q-refresh:hover { color: #555; }
+        #queueCards { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+        #queueCards::-webkit-scrollbar { height: 4px; }
+        #queueCards::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+        .q-card { flex: 0 0 180px; background: #fff; border: 1px solid #e5e8ef; border-radius: 10px;
+                  padding: 0 0 10px; position: relative; cursor: default; overflow: hidden;
+                  transition: border-color 0.1s, box-shadow 0.1s; }
+        .q-card:hover { border-color: #bbb; box-shadow: 0 2px 8px rgba(0,0,0,.07); }
+        .q-card.q-plotting { border-color: #f90; }
+        .q-card.q-done    { border-color: #4c9; opacity: 0.75; }
+        .q-card.q-error   { border-color: #e44; }
+        .q-thumb { display: block; width: 100%; height: 110px; object-fit: contain;
+                   background: #f7f7f7; border-bottom: 1px solid #eee; }
+        .q-thumb-placeholder { width: 100%; height: 110px; background: #f5f5f5;
+                                display: flex; align-items: center; justify-content: center;
+                                color: #ccc; font-size: 22px; border-bottom: 1px solid #eee; }
+        .q-card-body { padding: 9px 12px 0; }
+        .q-card-name  { font-weight: 600; font-size: 12px; color: #111; margin-bottom: 3px;
+                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 20px; }
+        .q-card-meta  { font-size: 10px; color: #999; margin-bottom: 5px; }
+        .q-card-footer { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; }
+        .q-card-status { font-size: 10px; }
+        .q-card-status.qs-queued   { color: #aaa; }
+        .q-card-status.qs-plotting { color: #c07000; font-weight: 600; }
+        .q-card-status.qs-done     { color: #2a7; }
+        .q-card-status.qs-error    { color: #c00; }
+        .q-card-load { background: none; border: none; color: #88b; font-size: 11px; cursor: pointer;
+                       padding: 2px 4px; border-radius: 3px; }
+        .q-card-load:hover { background: #eef; color: #448; }
+        .q-card-del { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,.8);
+                      border: none; color: #bbb; cursor: pointer; font-size: 13px; line-height: 1;
+                      padding: 2px 5px; border-radius: 50%; }
+        .q-card-del:hover { background: #ffeeee; color: #c00; }
+        #queueEmpty { color: #bbb; font-size: 12px; font-style: italic; padding: 6px 0; }
     </style>
 </head>
 <body>
@@ -76,7 +122,12 @@
                             <select id="sketchSelector" class="form-control form-control-sm">
                                 <option value="cmyk" data-script="scripts/sketches/cmykFlowCircles.js" selected>CMYK Flow</option>
                                 <option value="circlesFromLines" data-script="scripts/sketches/circlesFromLines.js">Circles From Lines</option>
+                                <option value="lineArrays" data-script="scripts/sketches/lineArrays.js">Line Arrays</option>
                                 <option value="zigzag" data-script="scripts/sketches/zigzag.js">Zigzag</option>
+                                <option value="whirls" data-script="scripts/sketches/whirls.js">Whirls</option>
+                                <option value="artproofs" data-script="scripts/sketches/artproofs.js">Artproofs</option>
+                                <option value="blendTest" data-script="scripts/sketches/blendTest.js">Blend Test</option>
+                                <option value="unbuiltSculptures" data-script="scripts/sketches/unbuiltSculptures.js">Unbuilt Sculptures</option>
                             </select>
                         </div>
                     </div>
@@ -149,14 +200,41 @@
                     </div>
 
                     <div class="control-actions d-flex flex-wrap">
+                        <button id="reseed" class="btn btn-outline-primary" type="button">Reseed</button>
                         <button id="randomize" class="btn btn-outline-primary" type="button">Randomize</button>
                         <button id="pause" class="btn btn-outline-primary" type="button">Pause</button>
                         <button id="savePng" class="btn btn-outline-primary" type="button">Save PNG</button>
                         <button id="saveSvg" class="btn btn-outline-primary" type="button">Save SVG</button>
+                        <button id="sendToQueue" class="btn btn-outline-success" type="button" title="Send SVG to pl0tb0t print queue">&#8594; Queue</button>
                     </div>
+                    <div id="queueStatus" style="display:none;margin-top:6px;font-size:12px;color:#555;"></div>
+                    <details id="queueConfigPanel" style="margin-top:8px;font-size:12px;">
+                        <summary style="cursor:pointer;color:#999;user-select:none;">Queue server</summary>
+                        <div style="padding:8px 0 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                            <input id="queueUrl" type="text" placeholder="http://pl0tb0tpi5:5001"
+                                style="flex:1;min-width:160px;font-size:12px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;">
+                            <input id="queueKey" type="password" placeholder="API key"
+                                style="width:100px;font-size:12px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;">
+                            <button id="queueSaveCfg" class="btn btn-sm btn-outline-secondary" type="button">Save</button>
+                        </div>
+                    </details>
                 </div>
             </div>
         </div>
+
+        <!-- ── Print queue strip ────────────────────────────────────────── -->
+        <div id="queueStrip">
+            <h6>
+                Print Queue
+                <span class="q-count" id="queueCount"></span>
+                <button class="q-refresh" id="queueRefreshBtn" title="Refresh queue">⟳</button>
+            </h6>
+            <div id="queueCards">
+                <span id="queueEmpty">No jobs in queue.</span>
+            </div>
+        </div>
+        <!-- ──────────────────────────────────────────────────────────────── -->
+
     </div>
 
     <!-- Controls + wiring (keeps same UI behavior as before) -->
@@ -216,6 +294,12 @@
             });
         });
 
+        document.getElementById('reseed').addEventListener('click', function() {
+            if (window.sketchAPI && typeof window.sketchAPI.reseed === 'function') {
+                window.sketchAPI.reseed();
+            }
+        });
+
         document.getElementById('randomize').addEventListener('click', function() {
             if (window.sketchAPI && typeof window.sketchAPI.randomize === 'function') {
                 window.sketchAPI.randomize();
@@ -248,6 +332,296 @@
                 alert('SVG export not available in this sketch.');
             }
         });
+
+        // ── Print queue ────────────────────────────────────────────────────────
+        (function() {
+            var STORAGE_URL_KEY = 'pl0tb0t_queue_url';
+            var STORAGE_KEY_KEY = 'pl0tb0t_queue_key';
+            var DEFAULT_URL = 'http://pl0tb0tpi5:5001';
+            var DEFAULT_KEY = 'pl0tb0t-secret';
+
+            function getUrl() { return (localStorage.getItem(STORAGE_URL_KEY) || DEFAULT_URL).replace(/\/$/, ''); }
+            function getKey() { return localStorage.getItem(STORAGE_KEY_KEY) || DEFAULT_KEY; }
+
+            function loadQueueCfg() {
+                document.getElementById('queueUrl').value = getUrl();
+                document.getElementById('queueKey').value = getKey();
+            }
+
+            function queueStatus(msg, color) {
+                var el = document.getElementById('queueStatus');
+                el.style.display = msg ? 'block' : 'none';
+                el.style.color = color || '#555';
+                el.textContent = msg;
+            }
+
+            document.getElementById('queueSaveCfg').addEventListener('click', function() {
+                localStorage.setItem(STORAGE_URL_KEY, document.getElementById('queueUrl').value.trim().replace(/\/$/, ''));
+                localStorage.setItem(STORAGE_KEY_KEY, document.getElementById('queueKey').value.trim());
+                queueStatus('Queue settings saved.', '#2a7');
+                setTimeout(function(){ queueStatus(''); }, 2500);
+            });
+
+            // ── SVG capture (no download side-effect) ─────────────────────────
+            // Different sketches trigger downloads differently:
+            //   Pattern A (whirls, lineArrays…): body.appendChild(a) then a.click()
+            //   Pattern B (artproofs, circlesFromLines…): a.click() directly, no appendChild
+            //
+            // Intercepting HTMLAnchorElement.prototype.click catches BOTH patterns.
+            // URL.createObjectURL is also intercepted so we can read the blob before
+            // revokeObjectURL (called immediately in Pattern B) invalidates the URL.
+            function captureSvgFromSaveSVG() {
+                return new Promise(function(resolve, reject) {
+                    if (!window.sketchAPI || typeof window.sketchAPI.saveSVG !== 'function')
+                        return reject(new Error('saveSVG not available for this sketch'));
+
+                    var origCOU   = URL.createObjectURL;
+                    var origClick = HTMLAnchorElement.prototype.click;
+                    var capturedText = null;
+                    var done = false;
+
+                    var cleanup = function() {
+                        URL.createObjectURL = origCOU;
+                        HTMLAnchorElement.prototype.click = origClick;
+                    };
+                    var timer = setTimeout(function() {
+                        if (!done) { cleanup(); reject(new Error('SVG capture timed out')); }
+                    }, 8000);
+
+                    // Step 1: read blob text before revokeObjectURL can invalidate it
+                    URL.createObjectURL = function(blob) {
+                        URL.createObjectURL = origCOU;
+                        var realUrl = origCOU(blob);          // real URL for revokeObjectURL
+                        blob.text().then(function(t) { capturedText = t; });
+                        return realUrl;
+                    };
+
+                    // Step 2: suppress the anchor click (catches both patterns)
+                    HTMLAnchorElement.prototype.click = function() {
+                        if (this.download) {                  // it's a download anchor
+                            HTMLAnchorElement.prototype.click = origClick;
+                            done = true;
+                            clearTimeout(timer);
+                            // blob.text() is async — give it 200ms then resolve
+                            setTimeout(function() {
+                                cleanup();
+                                if (capturedText && capturedText.length > 50) resolve(capturedText);
+                                else reject(new Error('SVG blob was empty'));
+                            }, 200);
+                            return;                           // suppress download
+                        }
+                        return origClick.call(this);
+                    };
+
+                    try { window.sketchAPI.saveSVG(); }
+                    catch(e) { cleanup(); done = true; clearTimeout(timer); reject(e); }
+                });
+            }
+
+            function getSvgString() {
+                var svgEl = document.querySelector('#make-sketch svg');
+                if (svgEl) return Promise.resolve(new XMLSerializer().serializeToString(svgEl));
+                return captureSvgFromSaveSVG();
+            }
+
+            // ── Embed / extract editor snapshot inside SVG ────────────────────
+            function embedSnapshot(svgStr, sketchId, params) {
+                try {
+                    var payload = btoa(unescape(encodeURIComponent(JSON.stringify({sketch: sketchId, params: params}))));
+                    return svgStr.replace(/<\/svg>/, '\n<!-- pl0tb0t-snapshot ' + payload + ' -->\n</svg>');
+                } catch(e) { return svgStr; }
+            }
+
+            function extractSnapshot(svgText) {
+                var m = svgText.match(/<!--\s*pl0tb0t-snapshot\s+([A-Za-z0-9+/=]+)\s*-->/);
+                if (!m) return null;
+                try { return JSON.parse(decodeURIComponent(escape(atob(m[1])))); }
+                catch(e) { return null; }
+            }
+
+            // ── Send to queue ─────────────────────────────────────────────────
+            document.getElementById('sendToQueue').addEventListener('click', function() {
+                var btn = this;
+                btn.disabled = true;
+                queueStatus('Generating SVG…', '#888');
+
+                var sketchId  = (document.getElementById('sketchSelector') || {}).value || 'sketch';
+                var paperSize = (document.getElementById('paperSize') || {}).value || '8.5x11';
+                var snapshot  = window.sketchAPI && window.sketchAPI.getParamsSnapshot
+                    ? window.sketchAPI.getParamsSnapshot() : [];
+
+                getSvgString().then(function(svgStr) {
+                    svgStr = embedSnapshot(svgStr, sketchId, snapshot);
+                    try { sessionStorage.setItem('pl0tb0t_last_queued_svg', svgStr); } catch(e) {}
+                    queueStatus('Sending…', '#888');
+                    return fetch(getUrl() + '/jobs', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-API-Key': getKey() },
+                        body: JSON.stringify({ svg: svgStr, sketch_name: sketchId, paper_size: paperSize, orientation: 'portrait' })
+                    });
+                }).then(function(r) {
+                    if (!r.ok) throw new Error('Server ' + r.status);
+                    return r.json();
+                }).then(function(data) {
+                    queueStatus('✓ Queued!  Job #' + data.job_id, '#2a7');
+                    setTimeout(function(){ queueStatus(''); }, 5000);
+                    fetchAndRenderStrip();
+                }).catch(function(err) {
+                    queueStatus('Queue error: ' + err.message, '#c00');
+                    document.getElementById('queueConfigPanel').open = true;
+                }).finally(function() { btn.disabled = false; });
+            });
+
+            // ── Load job back into editor ──────────────────────────────────────
+            function loadJobIntoEditor(jobId) {
+                fetch(getUrl() + '/jobs/' + jobId + '/svg', { headers: { 'X-API-Key': getKey() } })
+                    .then(function(r) { return r.text(); })
+                    .then(function(svgText) {
+                        var snap = extractSnapshot(svgText);
+                        if (!snap) { alert('No editor snapshot found in this job — it may have been queued before this feature was added.'); return; }
+                        var sel = document.getElementById('sketchSelector');
+                        var apply = function() {
+                            if (window.sketchAPI && window.sketchAPI.applyParamsSnapshot)
+                                window.sketchAPI.applyParamsSnapshot(snap.params);
+                        };
+                        if (sel && snap.sketch && sel.value !== snap.sketch) {
+                            sel.value = snap.sketch;
+                            sel.dispatchEvent(new Event('change'));
+                            setTimeout(apply, 600);   // wait for sketch to load
+                        } else { apply(); }
+                    }).catch(function(e) { alert('Load failed: ' + e.message); });
+            }
+
+            // ── Queue strip ───────────────────────────────────────────────────
+            var _stripTimer = null;
+            var _thumbBlobUrls = {};   // jobId → blob URL (cleaned up on re-render)
+
+            function timeAgo(ts) {
+                if (!ts) return '';
+                var d = Date.now() / 1000 - ts;
+                if (d < 60)    return 'just now';
+                if (d < 3600)  return Math.floor(d / 60) + 'm ago';
+                if (d < 86400) return Math.floor(d / 3600) + 'h ago';
+                return Math.floor(d / 86400) + 'd ago';
+            }
+
+            function loadThumb(jobId, imgEl) {
+                if (_thumbBlobUrls[jobId]) { imgEl.src = _thumbBlobUrls[jobId]; return; }
+                fetch(getUrl() + '/jobs/' + jobId + '/svg', { headers: { 'X-API-Key': getKey() } })
+                    .then(function(r) { return r.blob(); })
+                    .then(function(blob) {
+                        var url = URL.createObjectURL(blob);
+                        _thumbBlobUrls[jobId] = url;
+                        imgEl.src = url;
+                    }).catch(function() { imgEl.parentNode && imgEl.parentNode.removeChild(imgEl); });
+            }
+
+            function renderQueueStrip(jobs) {
+                var container = document.getElementById('queueCards');
+                var empty     = document.getElementById('queueEmpty');
+                var countEl   = document.getElementById('queueCount');
+                if (!container) return;
+
+                // Revoke blob URLs for jobs no longer in the list
+                var currentIds = (jobs || []).map(function(j) { return j.id; });
+                Object.keys(_thumbBlobUrls).forEach(function(id) {
+                    if (currentIds.indexOf(id) === -1) {
+                        URL.revokeObjectURL(_thumbBlobUrls[id]);
+                        delete _thumbBlobUrls[id];
+                    }
+                });
+
+                Array.from(container.querySelectorAll('.q-card')).forEach(function(c) { c.remove(); });
+
+                if (!jobs || jobs.length === 0) {
+                    empty.style.display = '';
+                    countEl.textContent = '';
+                    return;
+                }
+                empty.style.display = 'none';
+                countEl.textContent = jobs.length + ' job' + (jobs.length === 1 ? '' : 's');
+
+                var statusDot = { queued: '●', plotting: '▶', done: '✓', error: '✕' };
+                jobs.forEach(function(job) {
+                    var st   = job.status || 'queued';
+                    var card = document.createElement('div');
+                    card.className = 'q-card q-' + st;
+                    card.dataset.jobId = job.id;
+
+                    // Thumbnail
+                    var thumb = document.createElement('img');
+                    thumb.className = 'q-thumb';
+                    thumb.alt = '';
+                    loadThumb(job.id, thumb);
+                    card.appendChild(thumb);
+
+                    // Body
+                    var body = document.createElement('div');
+                    body.className = 'q-card-body';
+
+                    var name = document.createElement('div');
+                    name.className = 'q-card-name';
+                    name.textContent = job.sketch_name || 'Untitled';
+                    body.appendChild(name);
+
+                    var meta = document.createElement('div');
+                    meta.className = 'q-card-meta';
+                    meta.textContent = (job.paper_size || '') + (job.orientation ? ' · ' + job.orientation : '');
+                    body.appendChild(meta);
+                    card.appendChild(body);
+
+                    // Footer: status + load button
+                    var footer = document.createElement('div');
+                    footer.className = 'q-card-footer';
+
+                    var status = document.createElement('div');
+                    status.className = 'q-card-status qs-' + st;
+                    status.textContent = (statusDot[st] || '●') + ' ' + st + ' · ' + timeAgo(job.created_at);
+                    footer.appendChild(status);
+
+                    var load = document.createElement('button');
+                    load.className = 'q-card-load';
+                    load.title = 'Load into editor';
+                    load.textContent = '↩ Edit';
+                    load.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        loadJobIntoEditor(job.id);
+                    });
+                    footer.appendChild(load);
+                    card.appendChild(footer);
+
+                    // Delete button (top-right overlay)
+                    var del = document.createElement('button');
+                    del.className = 'q-card-del';
+                    del.title = 'Remove from queue';
+                    del.textContent = '✕';
+                    del.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        if (!confirm('Remove “' + (job.sketch_name || 'this job') + '” from the queue?')) return;
+                        fetch(getUrl() + '/jobs/' + job.id, { method: 'DELETE', headers: { 'X-API-Key': getKey() } })
+                            .then(function() { fetchAndRenderStrip(); })
+                            .catch(function(err) { alert('Delete failed: ' + err.message); });
+                    });
+                    card.appendChild(del);
+
+                    container.appendChild(card);
+                });
+            }
+
+            function fetchAndRenderStrip() {
+                fetch(getUrl() + '/jobs', { headers: { 'X-API-Key': getKey() } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(jobs) { renderQueueStrip(jobs); })
+                    .catch(function() {});
+            }
+
+            document.getElementById('queueRefreshBtn').addEventListener('click', fetchAndRenderStrip);
+
+            loadQueueCfg();
+            fetchAndRenderStrip();
+            _stripTimer = setInterval(fetchAndRenderStrip, 10000);
+        })();
+        // ──────────────────────────────────────────────────────────────────────
 
         const panelTabs = Array.from(document.querySelectorAll('.panel-tab'));
         const panelViews = Array.from(document.querySelectorAll('.panel-view'));
@@ -355,10 +729,17 @@
     </script>
 
     <!-- load sketches + adapter -->
+    <!-- Clipper.js — 2D polygon boolean operations (trim-behind clipping in SVG export) -->
+    <script src="https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js"></script>
     <script src="scripts/sketches/sharedPaperControls.js"></script>
     <script src="scripts/sketches/cmykFlowCircles.js"></script>
     <script src="scripts/sketches/circlesFromLines.js"></script>
+    <script src="scripts/sketches/lineArrays.js"></script>
     <script src="scripts/sketches/zigzag.js"></script>
+    <script src="scripts/sketches/whirls.js"></script>
+    <script src="scripts/sketches/artproofs.js"></script>
+    <script src="scripts/sketches/blendTest.js"></script>
+    <script src="scripts/sketches/unbuiltSculptures.js"></script>
 
     <script src="scripts/makeSketch.js"></script>
 

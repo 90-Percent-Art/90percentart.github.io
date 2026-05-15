@@ -2,7 +2,7 @@ window.makeSketchUtils = window.makeSketchUtils || (function() {
     var DPI = 100;
     var PAPER_SIZES = {
         '5x7': { w: 5, h: 7 },
-        '8.5x11': { w: 8.5, h: 11 },
+        '9x12':   { w: 9,   h: 12 },
         '11x14': { w: 11, h: 14 },
         '11x17': { w: 11, h: 17 },
         '14x17': { w: 14, h: 17 }
@@ -14,14 +14,35 @@ window.makeSketchUtils = window.makeSketchUtils || (function() {
                 id: 'paperSize',
                 label: 'Paper size',
                 type: 'select',
-                value: defaultPaper || '8.5x11',
+                value: defaultPaper || '9x12',
                 options: [
                     { value: '5x7', label: '5 x 7"' },
-                    { value: '8.5x11', label: '8.5 x 11"' },
+                    { value: '9x12',   label: '9 x 12"' },
                     { value: '11x14', label: '11 x 14"' },
                     { value: '11x17', label: '11 x 17"' },
-                    { value: '14x17', label: '14 x 17"' }
+                    { value: '14x17', label: '14 x 17"' },
+                    { value: 'custom', label: 'Custom...' }
                 ]
+            },
+            {
+                id: 'customWidth',
+                label: 'Width (inches)',
+                type: 'number',
+                value: 8.5,
+                min: 1,
+                max: 48,
+                step: 0.25,
+                visibleWhen: { param: 'paperSize', values: ['custom'] }
+            },
+            {
+                id: 'customHeight',
+                label: 'Height (inches)',
+                type: 'number',
+                value: 11,
+                min: 1,
+                max: 48,
+                step: 0.25,
+                visibleWhen: { param: 'paperSize', values: ['custom'] }
             },
             {
                 id: 'margin',
@@ -30,6 +51,7 @@ window.makeSketchUtils = window.makeSketchUtils || (function() {
                 value: String(defaultMargin || 1),
                 options: [
                     { value: '0.5', label: '1/2 inch' },
+                    { value: '0.75', label: '3/4 inch' },
                     { value: '1', label: '1 inch' }
                 ]
             }
@@ -37,7 +59,14 @@ window.makeSketchUtils = window.makeSketchUtils || (function() {
     }
 
     function getPaperPixels(paperSize) {
-        var size = PAPER_SIZES[paperSize] || PAPER_SIZES['8.5x11'];
+        if (paperSize === 'custom') {
+            var w = parseFloat((window.controls && window.controls.customWidth) || 8.5);
+            var h = parseFloat((window.controls && window.controls.customHeight) || 11);
+            if (!(w >= 1)) w = 8.5;
+            if (!(h >= 1)) h = 11;
+            return { width: Math.round(w * DPI), height: Math.round(h * DPI) };
+        }
+        var size = PAPER_SIZES[paperSize] || PAPER_SIZES['9x12'];
         return {
             width: Math.round(size.w * DPI),
             height: Math.round(size.h * DPI)

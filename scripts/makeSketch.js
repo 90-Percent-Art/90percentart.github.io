@@ -5,6 +5,15 @@
     var registeredApi = null;
     var lastSketchName = null;
 
+    function getParamGroup(pdef) {
+        if (pdef.group) return pdef.group;
+        var id = pdef.id || '';
+        if (id === 'paperSize' || id === 'margin' || id === 'customWidth' || id === 'customHeight') return 'paper';
+        if (id === 'palette' || id === 'colorMode' || id === 'viewMode' || id === 'startColor' || id === 'endColor') return 'color';
+        if (id === 'density' || id === 'penWidthMm' || id === 'hatchWeight' || id === 'alpha') return 'advanced';
+        return 'general';
+    }
+
     function make(name) {
         // destroy previous instance if present
         try {
@@ -12,6 +21,7 @@
         } catch(e) { /* ignore */ }
         currentP5 = null;
         registeredApi = null;
+        if (container) container.innerHTML = '';
 
         var sketchFn = (window.sketches && window.sketches[name]) ? window.sketches[name] : window.sketches['default'];
         if (!sketchFn) {
@@ -243,25 +253,63 @@
             }
         };
         // also expose a randomize helper
+        // Reseed: light randomize — sketch-specific seeds/fields only
+        window.sketchAPI.reseed = function() {
+            if (registeredApi && typeof registeredApi.reseed === 'function') {
+                try { registeredApi.reseed(); return; } catch(e) {}
+            }
+            if (typeof window.sketchAPI.regenerate === 'function') window.sketchAPI.regenerate();
+        };
+
+        // Snapshot: capture & restore full param state (used by print queue "load into editor")
+        window.sketchAPI.getParamsSnapshot = function() {
+            if (!registeredApi || !Array.isArray(registeredApi.params)) return [];
+            return registeredApi.params
+                .filter(function(p) { return p.type !== 'action'; })
+                .map(function(p) { return { id: p.id, value: p.value }; });
+        };
+        window.sketchAPI.applyParamsSnapshot = function(snapshot) {
+            if (!snapshot || !Array.isArray(snapshot)) return;
+            var origRegen = window.sketchAPI.regenerate;
+            window.sketchAPI.regenerate = function() {};
+            snapshot.forEach(function(item) {
+                if (registeredApi && typeof registeredApi.setParam === 'function') {
+                    try { registeredApi.setParam(item.id, item.value); } catch(e) {}
+                }
+                var el = document.getElementById(item.id);
+                if (el) { el.value = item.value; el.dispatchEvent(new Event('input')); }
+            });
+            window.sketchAPI.regenerate = origRegen;
+            if (origRegen) origRegen();
+        };
+
+        // Randomize: full randomize of all general-group params (not paper, not advanced, not color/palette)
         window.sketchAPI.randomize = function() {
             if (registeredApi && typeof registeredApi.randomize === 'function') {
                 try { registeredApi.randomize(); return; } catch(e) { console.error(e); }
             }
-            // otherwise randomize any params if present
-            if (registeredApi && Array.isArray(registeredApi.params)) {
-                registeredApi.params.forEach(function(pdef){
-                    if (pdef.type === 'range' || pdef.type === undefined) {
-                        var min = (typeof pdef.min !== 'undefined') ? pdef.min : 0;
-                        var max = (typeof pdef.max !== 'undefined') ? pdef.max : 100;
-                        var val = Math.floor(Math.random() * (max - min + 1)) + min;
-                        pdef.value = val;
-                        var el = document.getElementById(pdef.id);
-                        if (el) el.value = val; 
-                    }
-                });
-                // trigger regenerate
-                if (typeof window.sketchAPI.regenerate === 'function') window.sketchAPI.regenerate();
-            }
+            if (!registeredApi || !Array.isArray(registeredApi.params)) return;
+            var origRegen = window.sketchAPI.regenerate;
+            window.sketchAPI.regenerate = function() {}; // suppress per-param redraws
+            registeredApi.params.forEach(function(pdef) {
+                if (getParamGroup(pdef) !== 'general') return;
+                if (pdef.type === 'colorPalette' || pdef.type === 'color' || pdef.type === 'action') return;
+                var val;
+                if (pdef.type === 'select') {
+                    var opts = pdef.options || [];
+                    if (!opts.length) return;
+                    val = opts[Math.floor(Math.random() * opts.length)].value;
+                } else if (pdef.type === 'range' || pdef.type === 'number' || !pdef.type) {
+                    var lo = Number(pdef.min || 0), hi = Number(pdef.max || 100), st = Number(pdef.step || 1);
+                    val = lo + Math.floor(Math.random() * (Math.floor((hi - lo) / st) + 1)) * st;
+                    val = Math.min(hi, val);
+                } else { return; }
+                pdef.value = val;
+                var el = document.getElementById(pdef.id);
+                if (el) { el.value = val; el.dispatchEvent(new Event('input')); }
+            });
+            window.sketchAPI.regenerate = origRegen;
+            if (origRegen) origRegen();
         };
 
         // update parameter UI if sketch provides params
@@ -270,19 +318,18 @@
                 var paramsContainer = document.getElementById('dynamicParams');
                 var staticControls = document.getElementById('staticControls');
                 var groupMeta = {
-                    general: { title: 'General', open: true },
-                    paper: { title: 'Paper', open: false },
+                    paper:    { title: 'Paper',    open: false },
+                    general:  { title: 'General',  open: true  },
+                    arcs:     { title: 'Arcs',     open: true  },
+                    wedges:   { title: 'Wedges',   open: true  },
+                    textures: { title: 'Textures', open: true  },
+                    color:    { title: 'Color',    open: true  },
                     advanced: { title: 'Advanced', open: false }
                 };
                 // clear existing dynamic
                 if (paramsContainer) paramsContainer.innerHTML = '';
-
-                function getParamGroup(pdef) {
-                    var id = pdef.id || '';
-                    if (id === 'paperSize' || id === 'margin') return 'paper';
-                    if (id === 'density' || id === 'penWidthMm' || id === 'hatchWeight' || id === 'alpha') return 'advanced';
-                    return 'general';
-                }
+                var params = (registeredApi && registeredApi.params) ? registeredApi.params : null;
+                if (!paramsContainer) return;
 
                 function ensureGroup(name) {
                     var existing = document.getElementById('param-group-' + name);
@@ -304,6 +351,16 @@
                     paramsContainer.appendChild(details);
                     return body;
                 }
+
+                // Pre-create only the groups used by the active sketch, in a stable order.
+                // This keeps Artproofs-only groups from leaking into Whirls and other sketches.
+                var preferredGroups = ['paper', 'general', 'arcs', 'wedges', 'textures', 'color', 'advanced'];
+                var groupsInUse = {};
+                (params || []).forEach(function(pdef) { groupsInUse[getParamGroup(pdef)] = true; });
+                preferredGroups.forEach(function(k) { if (groupsInUse[k]) ensureGroup(k); });
+                Object.keys(groupsInUse).forEach(function(k) {
+                    if (preferredGroups.indexOf(k) === -1) ensureGroup(k);
+                });
 
                 function getParamValue(id) {
                     var input = document.getElementById(id);
@@ -341,7 +398,6 @@
                     });
                 }
 
-                var params = (registeredApi && registeredApi.params) ? registeredApi.params : null;
                 if (params && params.length && paramsContainer) {
                     // hide static controls
                     if (staticControls) staticControls.style.display = 'none';
@@ -361,6 +417,194 @@
                         spanValue.textContent = (typeof pdef.value !== 'undefined') ? pdef.value : '';
                         label.appendChild(spanLabel);
                         label.appendChild(spanValue);
+
+                        if (pdef.type === 'colorPalette') {
+                            var maxSel = pdef.maxSelect || 6;
+                            var stdOpts = (pdef.options || []).filter(function(o){ return o.value !== 'custom'; });
+                            var hasCustomOpt = (pdef.options || []).some(function(o){ return o.value === 'custom'; });
+                            var initVal = Array.isArray(pdef.value) ? pdef.value : [];
+                            var selStd = initVal.filter(function(v){ return stdOpts.some(function(o){ return o.value === v; }); });
+                            var nonStd = initVal.filter(function(v){ return !stdOpts.some(function(o){ return o.value === v; }); });
+                            var custColor = nonStd.length ? nonStd[0] : (pdef.customColor || '#ff69b4');
+                            var custSel = nonStd.length > 0;
+                            spanValue.textContent = initVal.length >= maxSel ? 'max' : initVal.length + ' selected';
+
+                            function selCount(){ return selStd.length + (custSel ? 1 : 0); }
+                            function getFinal(){ var a = selStd.slice(); if (custSel) a.push(custColor); return a; }
+                            // Order strip — shows selected colors in gradient order, draggable to reorder
+                            var orderStrip = document.createElement('div');
+                            orderStrip.style.cssText = 'display:none;flex-wrap:wrap;align-items:center;gap:4px;margin-top:7px;';
+                            var orderHint = document.createElement('span');
+                            orderHint.style.cssText = 'font-size:9px;color:#999;white-space:nowrap;';
+                            orderHint.textContent = 'gradient order →';
+
+                            var rebuildOrderStrip = function() {
+                                orderStrip.innerHTML = '';
+                                var cols = getFinal();
+                                if (cols.length < 2) { orderStrip.style.display = 'none'; return; }
+                                orderStrip.style.display = 'flex';
+                                orderStrip.appendChild(orderHint);
+                                var dragSrcIdx = null;
+                                cols.forEach(function(col, idx) {
+                                    var d = document.createElement('div');
+                                    d.draggable = true;
+                                    d.title = 'Drag to reorder gradient';
+                                    d.style.cssText = 'width:20px;height:20px;border-radius:3px;background:'+col+';border:2px solid #ccc;cursor:grab;flex-shrink:0;';
+                                    d.addEventListener('dragstart', function(e) {
+                                        dragSrcIdx = idx;
+                                        e.dataTransfer.effectAllowed = 'move';
+                                        setTimeout(function(){ d.style.opacity='0.35'; }, 0);
+                                    });
+                                    d.addEventListener('dragend', function() {
+                                        d.style.opacity = '';
+                                        orderStrip.querySelectorAll('div').forEach(function(x){ x.style.outline=''; });
+                                    });
+                                    d.addEventListener('dragover', function(e) {
+                                        if (idx === dragSrcIdx) return;
+                                        e.preventDefault();
+                                        d.style.outline = '2px solid #111';
+                                    });
+                                    d.addEventListener('dragleave', function() { d.style.outline = ''; });
+                                    d.addEventListener('drop', function(e) {
+                                        e.preventDefault();
+                                        d.style.outline = '';
+                                        if (dragSrcIdx === null || idx === dragSrcIdx) return;
+                                        var srcColor = cols[dragSrcIdx];
+                                        // Reorder selStd; custom is always appended last by getFinal
+                                        var fi = selStd.indexOf(srcColor);
+                                        var ti = selStd.indexOf(col);
+                                        if (fi !== -1 && ti !== -1) {
+                                            selStd.splice(fi, 1);
+                                            selStd.splice(ti, 0, srcColor);
+                                        }
+                                        dragSrcIdx = null;
+                                        emitPal();
+                                    });
+                                    orderStrip.appendChild(d);
+                                });
+                            };
+
+                            function emitPal() {
+                                var c = getFinal();
+                                pdef.value = c; pdef.customColor = custColor;
+                                spanValue.textContent = c.length >= maxSel ? 'max' : c.length + ' selected';
+                                window.controls = window.controls || {};
+                                window.controls[pdef.id] = c;
+                                if (registeredApi && typeof registeredApi.setParam === 'function') {
+                                    try { registeredApi.setParam(pdef.id, c); } catch(e) {}
+                                }
+                                applyConditionalUI(params);
+                                if (typeof window.sketchAPI.regenerate === 'function') window.sketchAPI.regenerate();
+                                rebuildOrderStrip();
+                            }
+
+                            var pgrid = document.createElement('div');
+                            pgrid.className = 'palette-grid';
+                            var custInputRow, custSwEl;
+
+                            function updMax() {
+                                pgrid.querySelectorAll('.palette-item').forEach(function(el){
+                                    el.classList.toggle('at-max', selCount() >= maxSel && !el.classList.contains('selected'));
+                                });
+                            }
+
+                            stdOpts.forEach(function(opt) {
+                                var item = document.createElement('div');
+                                item.className = 'palette-item';
+                                var sw = document.createElement('div');
+                                sw.className = 'palette-swatch';
+                                sw.style.background = opt.value;
+                                var lbl2 = document.createElement('span');
+                                lbl2.className = 'palette-label';
+                                lbl2.textContent = opt.label;
+                                item.appendChild(sw); item.appendChild(lbl2);
+                                if (selStd.indexOf(opt.value) !== -1) item.classList.add('selected');
+                                item.addEventListener('click', function() {
+                                    var isSel = item.classList.contains('selected');
+                                    if (!isSel && selCount() >= maxSel) return;
+                                    if (isSel) { item.classList.remove('selected'); selStd.splice(selStd.indexOf(opt.value), 1); }
+                                    else { item.classList.add('selected'); selStd.push(opt.value); }
+                                    updMax(); emitPal();
+                                });
+                                pgrid.appendChild(item);
+                            });
+
+                            if (hasCustomOpt) {
+                                var custItem = document.createElement('div');
+                                custItem.className = 'palette-item';
+                                custSwEl = document.createElement('div');
+                                custSwEl.className = 'palette-swatch';
+                                custSwEl.style.background = custSel ? custColor : 'conic-gradient(red,yellow,lime,aqua,blue,magenta,red)';
+                                var custLbl = document.createElement('span');
+                                custLbl.className = 'palette-label';
+                                custLbl.textContent = 'Custom';
+                                custItem.appendChild(custSwEl); custItem.appendChild(custLbl);
+                                if (custSel) custItem.classList.add('selected');
+
+                                custInputRow = document.createElement('div');
+                                custInputRow.style.display = custSel ? '' : 'none';
+                                var custInputEl = document.createElement('input');
+                                custInputEl.type = 'color';
+                                custInputEl.value = custColor;
+                                custInputEl.className = 'form-control form-control-sm';
+                                custInputEl.style.cssText = 'height:28px;margin-top:6px';
+                                custInputEl.addEventListener('input', function() {
+                                    custColor = custInputEl.value;
+                                    custSwEl.style.background = custColor;
+                                    emitPal();
+                                });
+                                custInputRow.appendChild(custInputEl);
+
+                                custItem.addEventListener('click', function() {
+                                    var isSel = custItem.classList.contains('selected');
+                                    if (!isSel && selCount() >= maxSel) return;
+                                    if (isSel) {
+                                        custItem.classList.remove('selected');
+                                        custSel = false;
+                                        custSwEl.style.background = 'conic-gradient(red,yellow,lime,aqua,blue,magenta,red)';
+                                        custInputRow.style.display = 'none';
+                                    } else {
+                                        custItem.classList.add('selected');
+                                        custSel = true;
+                                        custSwEl.style.background = custColor;
+                                        custInputRow.style.display = '';
+                                    }
+                                    updMax(); emitPal();
+                                });
+                                pgrid.appendChild(custItem);
+                            }
+
+                            updMax();
+                            rebuildOrderStrip();
+                            row.appendChild(label); row.appendChild(pgrid);
+                            if (custInputRow) row.appendChild(custInputRow);
+                            row.appendChild(orderStrip);
+                            ensureGroup(getParamGroup(pdef)).appendChild(row);
+                            return;
+                        }
+
+                        if (pdef.type === 'action') {
+                            row.className = 'mb-0 d-inline-block';
+                            if (spanValue) spanValue.style.display = 'none';
+                            var actionButton = document.createElement('button');
+                            actionButton.type = 'button';
+                            actionButton.id = pdef.id;
+                            actionButton.className = 'btn btn-outline-primary';
+                            actionButton.style.cssText = 'margin:4px 4px 0 0;font-size:13px;padding:5px 10px;border-radius:10px;line-height:1.35;width:auto;';
+                            actionButton.textContent = pdef.buttonLabel || pdef.label || pdef.id;
+                            actionButton.addEventListener('click', function() {
+                                window.controls = window.controls || {};
+                                window.controls[pdef.id] = true;
+                                if (registeredApi && typeof registeredApi.setParam === 'function') {
+                                    try { registeredApi.setParam(pdef.id, true); } catch(e) {}
+                                }
+                                applyConditionalUI(params);
+                                if (typeof window.sketchAPI.regenerate === 'function') window.sketchAPI.regenerate();
+                            });
+                            row.appendChild(actionButton);
+                            ensureGroup(getParamGroup(pdef)).appendChild(row);
+                            return;
+                        }
 
                         var input;
                         if ((pdef.type === 'range') || pdef.type === undefined) {
@@ -393,20 +637,22 @@
 
                         input.id = pdef.id;
                         input.className = 'form-control form-control-sm';
-                        // on change handler
-                        input.addEventListener('input', function(ev){
+                        function commitInputValue() {
                             var val = (input.type==='range' || input.type==='number') ? Number(input.value) : input.value;
                             if (spanValue) spanValue.textContent = input.value;
-                            // update global controls map
                             window.controls = window.controls || {};
                             window.controls[pdef.id] = val;
-                            // notify sketch API
                             if (registeredApi && typeof registeredApi.setParam === 'function') {
                                 try { registeredApi.setParam(pdef.id, val); } catch(e){}
                             }
                             applyConditionalUI(params);
                             if (typeof window.sketchAPI.regenerate === 'function') window.sketchAPI.regenerate();
-                        });
+                        }
+                        // on change handler
+                        input.addEventListener('input', commitInputValue);
+                        if (input.tagName && input.tagName.toLowerCase() === 'select') {
+                            input.addEventListener('change', commitInputValue);
+                        }
 
                         row.appendChild(label);
                         row.appendChild(input);

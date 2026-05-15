@@ -3,7 +3,7 @@ window.sketches['zigzag'] = function(p) {
     var paper = window.makeSketchUtils;
 
     var PARAMS = {
-        paperSize: '8.5x11',
+        paperSize: '9x12',
         margin: 1,
         BLOCK_COUNT: 0,
         HATCH_SPACING: 3.5,
@@ -12,28 +12,50 @@ window.sketches['zigzag'] = function(p) {
         CURVE_ENABLED: true,
         CURVE_MAG: 1,
         CURVE_FREQ: 0.5,
-        ALPHA: 200,
-        COLOR_MODE: 'perShape'
+        ALPHA: 100,
+        COLOR_MODE: 'perShape',
+        viewMode: 'multiply',
+        palette: ['#ff3333', '#3366ff', '#ff8800', '#33cc66', '#8833cc'],
+        SQUIGGLE_AMP: 0
     };
-
-    var PALETTE = ['#c85a5a','#6aa6d1','#d1a86a','#6ad1a2','#8f79c8'];
     var blocks = [];
     var paused = false;
 
     var api = {
         params: paper.buildPaperParams(PARAMS.paperSize, PARAMS.margin).concat([
+            { id: 'palette', label: 'Colors', type: 'colorPalette', maxSelect: 6,
+              value: ['#ff3333', '#3366ff', '#ff8800', '#33cc66', '#8833cc'],
+              options: [
+                { value: '#00ffff', label: 'Cyan' },
+                { value: '#ff00ff', label: 'Magenta' },
+                { value: '#ffff00', label: 'Yellow' },
+                { value: '#000000', label: 'Black' },
+                { value: '#ff3333', label: 'Red' },
+                { value: '#33cc66', label: 'Green' },
+                { value: '#3366ff', label: 'Blue' },
+                { value: '#8833cc', label: 'Purple' },
+                { value: '#ff8800', label: 'Orange' },
+                { value: 'custom', label: 'Custom' }
+              ]},
             { id: 'blockCount',    label: 'Block count',    type: 'range', min: 0, max: 8,    step: 1,    value: 0 },
             { id: 'hatchSpacing',  label: 'Hatch spacing',  type: 'range', min: 1, max: 12,   step: 1,    value: 4 },
-            { id: 'hatchWeight',   label: 'Pen width (mm)', type: 'range', min: 0.1, max: 2.0, step: 0.1, value: 0.4 },
             { id: 'hatchJitter',   label: 'Line jitter',    type: 'range', min: 0, max: 10,   step: 1,    value: 4,
               _toInternal: function(v){ return v/10; } },
             { id: 'curveMag',      label: 'Curve mag',      type: 'range', min: 0, max: 30,   step: 1,    value: 10,
               _toInternal: function(v){ return v/10; } },
-            { id: 'alpha',         label: 'Opacity',        type: 'range', min: 10, max: 255, step: 5,    value: 200 }
+            { id: 'squiggleMag',   label: 'Squiggle',       type: 'range', min: 0, max: 20,   step: 1,    value: 0,
+              _toInternal: function(v){ return v/4; } },
+            { id: 'hatchWeight',   label: 'Pen width (mm)', type: 'range', min: 0.1, max: 2.0, step: 0.1, value: 0.4 },
+            { id: 'alpha',         label: 'Opacity',        type: 'range', min: 10, max: 255, step: 5,    value: 100 },
+            { id: 'viewMode', label: 'View mode', type: 'select', value: 'multiply',
+              options: [
+                { value: 'normal', label: 'Normal' },
+                { value: 'multiply', label: 'Multiply' }
+              ]}
         ]),
         regenerate: function() { resizeIfNeeded(); p.redraw(); },
         togglePause: function() { paused = !paused; return paused; },
-        randomize: function() { randomizeAll(); p.redraw(); },
+        reseed: function() { randomizeAll(); p.redraw(); },
         saveSVG: function() {
             var dims = paper.getPaperPixels(PARAMS.paperSize);
             var strokeWidth = Math.max(0.5, paper.mmToPixels(PARAMS.HATCH_WEIGHT_MM));
@@ -72,7 +94,10 @@ window.sketches['zigzag'] = function(p) {
         if (name === 'hatchWeight')  PARAMS.HATCH_WEIGHT_MM = Number(val);
         if (name === 'hatchJitter')  PARAMS.HATCH_JITTER = val;
         if (name === 'curveMag')     PARAMS.CURVE_MAG = val;
+        if (name === 'squiggleMag')  PARAMS.SQUIGGLE_AMP = val;
         if (name === 'alpha')        { PARAMS.ALPHA = val; for (var b of blocks) setBlockAlpha(b, val); }
+        if (name === 'viewMode')     PARAMS.viewMode = val;
+        if (name === 'palette')      { PARAMS.palette = Array.isArray(val) && val.length ? val : PARAMS.palette; recolor(); }
         if (name === 'paperSize' || name === 'margin' || name === 'blockCount') randomizeAll();
     }
 
@@ -105,10 +130,19 @@ window.sketches['zigzag'] = function(p) {
     }
 
     function buildColors(rectCount, connCount) {
+        var pal = (PARAMS.palette && PARAMS.palette.length) ? PARAMS.palette : ['#000000'];
         var colors = { rects: [], conns: [] };
-        for (var i = 0; i < rectCount; i++) colors.rects.push(makeColorWithAlpha(p.random(PALETTE)));
-        for (var i = 0; i < connCount; i++)  colors.conns.push(makeColorWithAlpha(p.random(PALETTE)));
+        for (var i = 0; i < rectCount; i++) colors.rects.push(makeColorWithAlpha(p.random(pal)));
+        for (var i = 0; i < connCount; i++)  colors.conns.push(makeColorWithAlpha(p.random(pal)));
         return colors;
+    }
+
+    function recolor() {
+        for (var i = 0; i < blocks.length; i++) {
+            var b = blocks[i];
+            b.colors = buildColors(b.rects.length, b.rects.length - 1);
+            setBlockAlpha(b, PARAMS.ALPHA);
+        }
     }
 
     function setBlockAlpha(block, alpha) {
@@ -161,19 +195,22 @@ window.sketches['zigzag'] = function(p) {
     }
 
     function drawHatchLine(A, B) {
-        if (!PARAMS.CURVE_ENABLED) { p.line(A.x,A.y,B.x,B.y); return; }
         var dx=B.x-A.x, dy=B.y-A.y;
         var len=Math.hypot(dx,dy)||1;
         var nx=-dy/len, ny=dx/len;
-        var phase=p.random(p.TWO_PI);
         var lenScale=p.constrain(len/30,0,1);
-        var amp=PARAMS.CURVE_MAG*lenScale;
+        var amp=PARAMS.CURVE_ENABLED ? PARAMS.CURVE_MAG*lenScale : 0;
         var freq=PARAMS.CURVE_FREQ*lenScale+0.0001;
+        var sqAmp=PARAMS.SQUIGGLE_AMP*lenScale;
+        var sqN=Math.max(2, Math.min(12, Math.round(len/12)));
+        if (amp<0.01 && sqAmp<0.01) { p.line(A.x,A.y,B.x,B.y); return; }
+        var phase=p.random(p.TWO_PI), phase2=p.random(p.TWO_PI);
+        var segs=Math.max(8, sqN*4);
         p.noFill();
         p.beginShape();
-        for (var i=0;i<=8;i++) {
-            var t=i/8;
-            var off=Math.sin(phase+t*freq*p.TWO_PI)*amp;
+        for (var i=0;i<=segs;i++) {
+            var t=i/segs;
+            var off=Math.sin(phase+t*freq*p.TWO_PI)*amp + Math.sin(phase2+t*sqN*p.TWO_PI)*sqAmp;
             p.vertex(A.x+dx*t+nx*off, A.y+dy*t+ny*off);
         }
         p.endShape();
@@ -294,7 +331,7 @@ window.sketches['zigzag'] = function(p) {
         }
 
         p.push();
-        p.blendMode(p.MULTIPLY);
+        p.blendMode(PARAMS.viewMode === 'multiply' ? p.MULTIPLY : p.BLEND);
         p.image(g,0,0);
         p.pop();
         g.remove();
@@ -385,36 +422,43 @@ window.sketches['zigzag'] = function(p) {
     }
 
     function drawHatchLineG(g, A, B) {
-        if (!PARAMS.CURVE_ENABLED) { g.line(A.x,A.y,B.x,B.y); return; }
         var dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1;
         var nx=-dy/len, ny=dx/len;
-        var phase=p.random(p.TWO_PI);
         var lenScale=Math.min(len/30,1);
-        var amp=PARAMS.CURVE_MAG*lenScale;
+        var amp=PARAMS.CURVE_ENABLED ? PARAMS.CURVE_MAG*lenScale : 0;
         var freq=PARAMS.CURVE_FREQ*lenScale+0.0001;
+        var sqAmp=PARAMS.SQUIGGLE_AMP*lenScale;
+        var sqN=Math.max(2, Math.min(12, Math.round(len/12)));
+        if (amp<0.01 && sqAmp<0.01) { g.line(A.x,A.y,B.x,B.y); return; }
+        var phase=p.random(p.TWO_PI), phase2=p.random(p.TWO_PI);
+        var segs=Math.max(8, sqN*4);
         g.noFill(); g.beginShape();
-        for (var i=0;i<=8;i++){
-            var t=i/8, off=Math.sin(phase+t*freq*p.TWO_PI)*amp;
+        for (var i=0;i<=segs;i++){
+            var t=i/segs;
+            var off=Math.sin(phase+t*freq*p.TWO_PI)*amp + Math.sin(phase2+t*sqN*p.TWO_PI)*sqAmp;
             g.vertex(A.x+dx*t+nx*off, A.y+dy*t+ny*off);
         }
         g.endShape();
     }
 
     function appendZigHatch(parts, A, B, stroke, strokeWidth) {
-        if (!PARAMS.CURVE_ENABLED) {
+        var dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx,dy)||1;
+        var nx = -dy/len, ny = dx/len;
+        var lenScale = Math.min(len/30,1);
+        var amp = PARAMS.CURVE_ENABLED ? PARAMS.CURVE_MAG*lenScale : 0;
+        var freq = PARAMS.CURVE_FREQ*lenScale+0.0001;
+        var sqAmp = PARAMS.SQUIGGLE_AMP*lenScale;
+        var sqN = Math.max(2, Math.min(12, Math.round(len/12)));
+        if (amp<0.01 && sqAmp<0.01) {
             parts.push('<line x1="' + fmt(A.x) + '" y1="' + fmt(A.y) + '" x2="' + fmt(B.x) + '" y2="' + fmt(B.y) + '" ' + strokeAttrs(stroke, strokeWidth) + '/>');
             return;
         }
-        var dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx,dy)||1;
-        var nx = -dy/len, ny = dx/len;
-        var phase = p.random(p.TWO_PI);
-        var lenScale = Math.min(len/30,1);
-        var amp = PARAMS.CURVE_MAG*lenScale;
-        var freq = PARAMS.CURVE_FREQ*lenScale+0.0001;
+        var phase = p.random(p.TWO_PI), phase2 = p.random(p.TWO_PI);
+        var segs = Math.max(8, sqN*4);
         var pts = [];
-        for (var i = 0; i <= 8; i++) {
-            var t = i/8;
-            var off = Math.sin(phase+t*freq*p.TWO_PI)*amp;
+        for (var i = 0; i <= segs; i++) {
+            var t = i/segs;
+            var off = Math.sin(phase+t*freq*p.TWO_PI)*amp + Math.sin(phase2+t*sqN*p.TWO_PI)*sqAmp;
             pts.push(fmt(A.x+dx*t+nx*off) + ',' + fmt(A.y+dy*t+ny*off));
         }
         parts.push('<polyline points="' + pts.join(' ') + '" ' + strokeAttrs(stroke, strokeWidth) + '/>');
