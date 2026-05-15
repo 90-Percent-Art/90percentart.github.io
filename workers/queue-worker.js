@@ -110,6 +110,8 @@ async function handleCreate(request, env) {
     status: "queued",
     created_at: Math.floor(Date.now() / 1000),
     notes: String(data.notes || "").slice(0, 500),
+    file_size: bytes,
+    file_size_bytes: bytes,
     delete_token: deleteToken,
   };
 

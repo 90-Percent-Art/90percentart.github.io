@@ -533,6 +533,14 @@
                 return Math.floor(d / 86400) + 'd ago';
             }
 
+            function formatBytes(n) {
+                n = Number(n || 0);
+                if (!n) return '';
+                if (n < 1024) return n + ' B';
+                if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10 * 1024 ? 1 : 0) + ' KB';
+                return (n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0) + ' MB';
+            }
+
             function loadThumb(jobId, imgEl) {
                 if (_thumbBlobUrls[jobId]) { imgEl.src = _thumbBlobUrls[jobId]; return; }
                 fetch(getUrl() + '/jobs/' + jobId + '/svg', { headers: queueHeaders() })
@@ -594,7 +602,12 @@
 
                     var meta = document.createElement('div');
                     meta.className = 'q-card-meta';
-                    meta.textContent = (job.paper_size || '') + (job.orientation ? ' · ' + job.orientation : '');
+                    var sizeText = formatBytes(job.file_size || job.file_size_bytes);
+                    meta.textContent = [
+                        job.paper_size || '',
+                        job.orientation || '',
+                        sizeText
+                    ].filter(Boolean).join(' · ');
                     body.appendChild(meta);
                     card.appendChild(body);
 
