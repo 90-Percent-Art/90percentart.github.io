@@ -67,7 +67,15 @@ async function putJobIndex(env, ids) {
   await env.QUEUE_KV.put("jobs:index", JSON.stringify(unique));
 }
 
-async function listJobs(env, statusFilter = "") {
+async function putPublicJobs(env, jobs) {
+  const sorted = jobs
+    .map(publicJob)
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  await env.QUEUE_KV.put("jobs:public", JSON.stringify(sorted));
+  return sorted;
+}
+
+async function rebuildPublicJobs(env) {
   const ids = await getJobIndex(env);
   const jobs = [];
   const liveIds = [];
@@ -76,17 +84,21 @@ async function listJobs(env, statusFilter = "") {
     if (!job) continue;
     liveIds.push(id);
     job = await withFileSize(env, job);
-    if (statusFilter && job.status !== statusFilter) continue;
-    jobs.push(job);
+    jobs.push(publicJob(job));
   }
   if (liveIds.length !== ids.length) await putJobIndex(env, liveIds);
-  jobs.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-  return jobs;
+  return await putPublicJobs(env, jobs);
 }
 
-async function countActive(env) {
-  const jobs = await listJobs(env);
-  return jobs.filter(job => ["queued", "plotting"].includes(job.status || "queued")).length;
+async function getPublicJobs(env) {
+  const jobs = await env.QUEUE_KV.get("jobs:public", "json");
+  if (Array.isArray(jobs)) return jobs;
+  return await rebuildPublicJobs(env);
+}
+
+async function listJobs(env, statusFilter = "") {
+  const jobs = await getPublicJobs(env);
+  return statusFilter ? jobs.filter(job => job.status === statusFilter) : jobs;
 }
 
 function pruneCandidates(jobs) {
@@ -101,7 +113,7 @@ async function deleteJob(env, jobId) {
 }
 
 async function pruneOldestForRoom(env, maxActive) {
-  let jobs = await listJobs(env);
+  let jobs = await getPublicJobs(env);
   let active = jobs.filter(job => ["queued", "plotting"].includes(job.status || "queued")).length;
   const pruned = [];
 
@@ -115,10 +127,11 @@ async function pruneOldestForRoom(env, maxActive) {
   }
 
   if (pruned.length) {
-    await putJobIndex(env, (await getJobIndex(env)).filter(id => !pruned.includes(id)));
+    await putJobIndex(env, jobs.map(job => job.id));
+    await putPublicJobs(env, jobs);
   }
 
-  return active < maxActive ? pruned : null;
+  return active < maxActive ? { pruned, jobs } : null;
 }
 
 async function readRequestData(request) {
@@ -139,8 +152,8 @@ async function readRequestData(request) {
 
 async function handleCreate(request, env) {
   const maxActive = Number(env.MAX_ACTIVE || DEFAULT_MAX_ACTIVE);
-  const pruned = await pruneOldestForRoom(env, maxActive);
-  if (pruned === null) {
+  const pruneResult = await pruneOldestForRoom(env, maxActive);
+  if (pruneResult === null) {
     return json({ error: `queue full; max active jobs is ${maxActive}; no non-plotting jobs available to prune` }, 409);
   }
 
@@ -174,9 +187,10 @@ async function handleCreate(request, env) {
 
   await env.QUEUE_KV.put(`job:${jobId}`, JSON.stringify(job));
   await env.QUEUE_KV.put(`svg:${jobId}`, svg);
-  await putJobIndex(env, [jobId, ...await getJobIndex(env)]);
+  await putJobIndex(env, [jobId, ...pruneResult.jobs.map(job => job.id)]);
+  await putPublicJobs(env, [job, ...pruneResult.jobs]);
 
-  return json({ ...publicJob(job), job_id: jobId, delete_token: deleteToken, pruned }, 201);
+  return json({ ...publicJob(job), job_id: jobId, delete_token: deleteToken, pruned: pruneResult.pruned }, 201);
 }
 
 async function handleList(request, env) {
@@ -209,6 +223,8 @@ async function handleStatus(request, env, jobId) {
   }
   job.status = status;
   await env.QUEUE_KV.put(`job:${jobId}`, JSON.stringify(job));
+  const jobs = (await getPublicJobs(env)).filter(item => item.id !== jobId);
+  await putPublicJobs(env, [publicJob(job), ...jobs]);
   return json(publicJob(job));
 }
 
@@ -223,7 +239,9 @@ async function handleDelete(request, env, jobId) {
   }
 
   await deleteJob(env, jobId);
-  await putJobIndex(env, (await getJobIndex(env)).filter(id => id !== jobId));
+  const jobs = (await getPublicJobs(env)).filter(item => item.id !== jobId);
+  await putJobIndex(env, jobs.map(item => item.id));
+  await putPublicJobs(env, jobs);
   return json({ deleted: jobId });
 }
 
