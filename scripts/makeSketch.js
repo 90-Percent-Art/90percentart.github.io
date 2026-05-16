@@ -283,7 +283,7 @@
             if (origRegen) origRegen();
         };
 
-        // Randomize: full randomize of all general-group params (not paper, not advanced, not color/palette)
+        // Randomize: full randomize of creative params (not paper, not advanced)
         window.sketchAPI.randomize = function() {
             if (registeredApi && typeof registeredApi.randomize === 'function') {
                 try { registeredApi.randomize(); return; } catch(e) { console.error(e); }
@@ -292,10 +292,32 @@
             var origRegen = window.sketchAPI.regenerate;
             window.sketchAPI.regenerate = function() {}; // suppress per-param redraws
             registeredApi.params.forEach(function(pdef) {
-                if (getParamGroup(pdef) !== 'general') return;
-                if (pdef.type === 'colorPalette' || pdef.type === 'color' || pdef.type === 'action') return;
+                var group = getParamGroup(pdef);
+                if (group === 'paper' || group === 'advanced') return;
+                if (pdef.type === 'action') return;
                 var val;
-                if (pdef.type === 'select') {
+                if (pdef.type === 'colorPalette') {
+                    var opts = (pdef.options || []).filter(function(o) {
+                        return o.value && o.value !== 'custom';
+                    });
+                    if (!opts.length) return;
+                    var maxSel = Math.max(1, Math.min(pdef.maxSelect || 6, opts.length));
+                    var count = 1 + Math.floor(Math.random() * maxSel);
+                    var pool = opts.map(function(o) { return o.value; });
+                    val = [];
+                    while (val.length < count && pool.length) {
+                        val.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+                    }
+                    pdef.value = val;
+                    if (typeof pdef._setUIValue === 'function') {
+                        pdef._setUIValue(val);
+                    } else if (registeredApi && typeof registeredApi.setParam === 'function') {
+                        try { registeredApi.setParam(pdef.id, val); } catch(e) {}
+                    }
+                    return;
+                } else if (pdef.type === 'color') {
+                    val = '#' + Math.floor(Math.random() * 0x1000000).toString(16).padStart(6, '0');
+                } else if (pdef.type === 'select') {
                     var opts = pdef.options || [];
                     if (!opts.length) return;
                     val = opts[Math.floor(Math.random() * opts.length)].value;
@@ -307,6 +329,9 @@
                 pdef.value = val;
                 var el = document.getElementById(pdef.id);
                 if (el) { el.value = val; el.dispatchEvent(new Event('input')); }
+                else if (registeredApi && typeof registeredApi.setParam === 'function') {
+                    try { registeredApi.setParam(pdef.id, val); } catch(e) {}
+                }
             });
             window.sketchAPI.regenerate = origRegen;
             if (origRegen) origRegen();
@@ -500,7 +525,8 @@
 
                             var pgrid = document.createElement('div');
                             pgrid.className = 'palette-grid';
-                            var custInputRow, custSwEl;
+                            var custInputRow, custSwEl, custInputEl, custItem;
+                            var paletteItemsByValue = {};
 
                             function updMax() {
                                 pgrid.querySelectorAll('.palette-item').forEach(function(el){
@@ -519,6 +545,7 @@
                                 lbl2.textContent = opt.label;
                                 item.appendChild(sw); item.appendChild(lbl2);
                                 if (selStd.indexOf(opt.value) !== -1) item.classList.add('selected');
+                                paletteItemsByValue[opt.value] = item;
                                 item.addEventListener('click', function() {
                                     var isSel = item.classList.contains('selected');
                                     if (!isSel && selCount() >= maxSel) return;
@@ -530,7 +557,7 @@
                             });
 
                             if (hasCustomOpt) {
-                                var custItem = document.createElement('div');
+                                custItem = document.createElement('div');
                                 custItem.className = 'palette-item';
                                 custSwEl = document.createElement('div');
                                 custSwEl.className = 'palette-swatch';
@@ -543,7 +570,7 @@
 
                                 custInputRow = document.createElement('div');
                                 custInputRow.style.display = custSel ? '' : 'none';
-                                var custInputEl = document.createElement('input');
+                                custInputEl = document.createElement('input');
                                 custInputEl.type = 'color';
                                 custInputEl.value = custColor;
                                 custInputEl.className = 'form-control form-control-sm';
@@ -573,6 +600,42 @@
                                 });
                                 pgrid.appendChild(custItem);
                             }
+
+                            pdef._setUIValue = function(values) {
+                                var next = Array.isArray(values) ? values.map(String) : [];
+                                selStd = next.filter(function(v) {
+                                    return stdOpts.some(function(o) { return o.value === v; });
+                                }).slice(0, maxSel);
+                                var nonStd = next.filter(function(v) {
+                                    return !stdOpts.some(function(o) { return o.value === v; });
+                                });
+                                if (hasCustomOpt && nonStd.length && selStd.length < maxSel) {
+                                    custColor = nonStd[0];
+                                    custSel = true;
+                                } else {
+                                    custSel = false;
+                                }
+                                Object.keys(paletteItemsByValue).forEach(function(value) {
+                                    paletteItemsByValue[value].classList.toggle('selected', selStd.indexOf(value) !== -1);
+                                });
+                                if (custItem && custSwEl && custInputRow) {
+                                    custItem.classList.toggle('selected', custSel);
+                                    custSwEl.style.background = custSel ? custColor : 'conic-gradient(red,yellow,lime,aqua,blue,magenta,red)';
+                                    custInputRow.style.display = custSel ? '' : 'none';
+                                    if (custInputEl) custInputEl.value = custColor;
+                                }
+                                updMax();
+                                var c = getFinal();
+                                pdef.value = c;
+                                spanValue.textContent = c.length >= maxSel ? 'max' : c.length + ' selected';
+                                window.controls = window.controls || {};
+                                window.controls[pdef.id] = c;
+                                if (registeredApi && typeof registeredApi.setParam === 'function') {
+                                    try { registeredApi.setParam(pdef.id, c); } catch(e) {}
+                                }
+                                applyConditionalUI(params);
+                                rebuildOrderStrip();
+                            };
 
                             updMax();
                             rebuildOrderStrip();
