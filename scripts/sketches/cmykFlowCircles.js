@@ -10,7 +10,7 @@ window.sketches['cmyk'] = function(p) {
         viewMode:   'normal',
         fieldSeed:  1,
         circleSize: 50,
-        paddingMm:  0,
+        paddingMm:  2,
         boxRotationDeg: 0,
         boxRotationMode: 'clean',
         composition: 50,
@@ -98,7 +98,7 @@ window.sketches['cmyk'] = function(p) {
                 { value: 'multiply', label: 'Multiply' }
               ]},
             { id: 'circleSize', label: 'Shape size (px)', type: 'range', min: 15, max: 150, step: 5,  value: 50  },
-            { id: 'paddingMm', label: 'Padding (mm)', type: 'range', min: 0, max: 10, step: 0.1, value: 0,
+            { id: 'paddingMm', label: 'Padding (mm)', type: 'range', min: 0, max: 10, step: 0.1, value: 2,
               _toInternal: function(v){ return v; } },
             { id: 'boxRotationDeg', label: 'Box rotation°', type: 'range', min: 0, max: 180, step: 1, value: 0 },
             { id: 'boxRotationMode', label: 'Box rotation mode', type: 'select', value: 'clean',
@@ -109,7 +109,7 @@ window.sketches['cmyk'] = function(p) {
             { id: 'composition', label: 'Composition', type: 'range', min: 0, max: 100, step: 1, value: 50 },
             { id: 'penWidthMm', label: 'Pen width (mm)', type: 'range', min: 0.1, max: 2.0, step: 0.1, value: 0.4 },
             { id: 'noiseScale', label: 'Perlin scale',     type: 'range', min: 1,  max: 50,  step: 1,  value: 10  },
-            { id: 'gradAngle',  label: 'Gradient angle°', type: 'range', min: 0,   max: 355, step: 5,   value: 0   },
+            { id: 'gradAngle',  label: 'Gradient angle°', type: 'range', min: 0,   max: 355, step: 5,   value: 0, group: 'color' },
             { id: 'density',    label: 'Density (ln/mm)', type: 'range', min: 10,  max: 30,  step: 1,   value: 20,
               _toInternal: function(v){ return v / 10; } },
             { id: 'palette', label: 'Inks', type: 'colorPalette', maxSelect: 6,
@@ -132,16 +132,6 @@ window.sketches['cmyk'] = function(p) {
         regenerate: function() { resizeIfNeeded(); p.redraw(); },
         reseed: function() {
             PARAMS.fieldSeed = Math.floor(Math.random() * 1e6);
-            var ang = Math.floor(Math.random() * 72) * 5;
-            setSliderById('gradAngle', ang);
-            PARAMS.gradAngle = ang;
-            var comp = Math.floor(Math.random() * 61) + 20;
-            setSliderById('composition', comp);
-            PARAMS.composition = comp;
-            var ns = Math.floor(Math.random() * 40) + 1;
-            setSliderById('noiseScale', ns);
-            PARAMS.noiseScale = ns / 100;
-            resizeIfNeeded();
             p.redraw();
         },
         saveSVG: function() {
