@@ -47,12 +47,23 @@ function publicJob(job) {
   return safe;
 }
 
+async function withFileSize(env, job) {
+  if (!job || (job.file_size && job.file_size_bytes)) return job;
+  const svg = await env.QUEUE_KV.get(`svg:${job.id}`);
+  if (!svg) return job;
+  const bytes = new TextEncoder().encode(svg).length;
+  const updated = { ...job, file_size: bytes, file_size_bytes: bytes };
+  await env.QUEUE_KV.put(`job:${job.id}`, JSON.stringify(updated));
+  return updated;
+}
+
 async function listJobs(env, statusFilter = "") {
   const listed = await env.QUEUE_KV.list({ prefix: "job:" });
   const jobs = [];
   for (const key of listed.keys) {
-    const job = await env.QUEUE_KV.get(key.name, "json");
+    let job = await env.QUEUE_KV.get(key.name, "json");
     if (!job) continue;
+    job = await withFileSize(env, job);
     if (statusFilter && job.status !== statusFilter) continue;
     jobs.push(job);
   }
@@ -128,8 +139,9 @@ async function handleList(request, env) {
 }
 
 async function handleGetJob(jobId, env) {
-  const job = await env.QUEUE_KV.get(`job:${jobId}`, "json");
+  let job = await env.QUEUE_KV.get(`job:${jobId}`, "json");
   if (!job) return json({ error: "not found" }, 404);
+  job = await withFileSize(env, job);
   return json(publicJob(job));
 }
 
