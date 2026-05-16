@@ -57,16 +57,29 @@ async function withFileSize(env, job) {
   return updated;
 }
 
+async function getJobIndex(env) {
+  const ids = await env.QUEUE_KV.get("jobs:index", "json");
+  return Array.isArray(ids) ? ids : [];
+}
+
+async function putJobIndex(env, ids) {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  await env.QUEUE_KV.put("jobs:index", JSON.stringify(unique));
+}
+
 async function listJobs(env, statusFilter = "") {
-  const listed = await env.QUEUE_KV.list({ prefix: "job:" });
+  const ids = await getJobIndex(env);
   const jobs = [];
-  for (const key of listed.keys) {
-    let job = await env.QUEUE_KV.get(key.name, "json");
+  const liveIds = [];
+  for (const id of ids) {
+    let job = await env.QUEUE_KV.get(`job:${id}`, "json");
     if (!job) continue;
+    liveIds.push(id);
     job = await withFileSize(env, job);
     if (statusFilter && job.status !== statusFilter) continue;
     jobs.push(job);
   }
+  if (liveIds.length !== ids.length) await putJobIndex(env, liveIds);
   jobs.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
   return jobs;
 }
@@ -128,6 +141,7 @@ async function handleCreate(request, env) {
 
   await env.QUEUE_KV.put(`job:${jobId}`, JSON.stringify(job));
   await env.QUEUE_KV.put(`svg:${jobId}`, svg);
+  await putJobIndex(env, [jobId, ...await getJobIndex(env)]);
 
   return json({ ...publicJob(job), job_id: jobId, delete_token: deleteToken }, 201);
 }
@@ -177,33 +191,38 @@ async function handleDelete(request, env, jobId) {
 
   await env.QUEUE_KV.delete(`job:${jobId}`);
   await env.QUEUE_KV.delete(`svg:${jobId}`);
+  await putJobIndex(env, (await getJobIndex(env)).filter(id => id !== jobId));
   return json({ deleted: jobId });
 }
 
 export default {
   async fetch(request, env) {
-    if (request.method === "OPTIONS") return new Response("", { status: 204, headers: corsHeaders });
-    if (!env.QUEUE_KV) return json({ error: "QUEUE_KV binding missing" }, 500);
+    try {
+      if (request.method === "OPTIONS") return new Response("", { status: 204, headers: corsHeaders });
+      if (!env.QUEUE_KV) return json({ error: "QUEUE_KV binding missing" }, 500);
 
-    const url = new URL(request.url);
-    const path = url.pathname.replace(/\/+$/, "") || "/";
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/\/+$/, "") || "/";
 
-    if (path === "/" && request.method === "GET") {
-      return json({ ok: true, service: "pl0tb0t queue" });
+      if (path === "/" && request.method === "GET") {
+        return json({ ok: true, service: "pl0tb0t queue" });
+      }
+      if (path === "/jobs" && request.method === "POST") return await handleCreate(request, env);
+      if (path === "/jobs" && request.method === "GET") return await handleList(request, env);
+
+      const m = path.match(/^\/jobs\/([^/]+)(?:\/(svg|status))?$/);
+      if (!m) return json({ error: "not found" }, 404);
+
+      const jobId = m[1];
+      const action = m[2] || "";
+      if (!action && request.method === "GET") return await handleGetJob(jobId, env);
+      if (!action && request.method === "DELETE") return await handleDelete(request, env, jobId);
+      if (action === "svg" && request.method === "GET") return await handleGetSvg(jobId, env);
+      if (action === "status" && request.method === "PATCH") return await handleStatus(request, env, jobId);
+
+      return json({ error: "method not allowed" }, 405);
+    } catch (err) {
+      return json({ error: err && err.message ? err.message : String(err) }, 500);
     }
-    if (path === "/jobs" && request.method === "POST") return handleCreate(request, env);
-    if (path === "/jobs" && request.method === "GET") return handleList(request, env);
-
-    const m = path.match(/^\/jobs\/([^/]+)(?:\/(svg|status))?$/);
-    if (!m) return json({ error: "not found" }, 404);
-
-    const jobId = m[1];
-    const action = m[2] || "";
-    if (!action && request.method === "GET") return handleGetJob(jobId, env);
-    if (!action && request.method === "DELETE") return handleDelete(request, env, jobId);
-    if (action === "svg" && request.method === "GET") return handleGetSvg(jobId, env);
-    if (action === "status" && request.method === "PATCH") return handleStatus(request, env, jobId);
-
-    return json({ error: "method not allowed" }, 405);
   },
 };
