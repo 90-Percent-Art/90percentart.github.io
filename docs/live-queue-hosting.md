@@ -11,7 +11,8 @@ Workers with KV storage.
 - A submitter can delete their own job with a private delete token returned at
   submit time and stored in that browser's `localStorage`.
 - The Pi app uses `ADMIN_TOKEN` to delete any job and update job status.
-- The active queue is capped by `MAX_ACTIVE`, currently `10`.
+- The active queue is capped by `MAX_ACTIVE`, currently `50`.
+- When the active queue is full, the worker prunes the oldest non-plotting job before accepting new work.
 - Each SVG upload is capped by `MAX_SVG_BYTES`, currently `10 MB`.
 
 ## Cloudflare Setup

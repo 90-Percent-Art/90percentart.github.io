@@ -1,4 +1,4 @@
-const DEFAULT_MAX_ACTIVE = 10;
+const DEFAULT_MAX_ACTIVE = 50;
 const DEFAULT_MAX_SVG_BYTES = 10 * 1024 * 1024;
 
 const corsHeaders = {
@@ -89,6 +89,38 @@ async function countActive(env) {
   return jobs.filter(job => ["queued", "plotting"].includes(job.status || "queued")).length;
 }
 
+function pruneCandidates(jobs) {
+  return jobs
+    .filter(job => (job.status || "queued") !== "plotting")
+    .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+}
+
+async function deleteJob(env, jobId) {
+  await env.QUEUE_KV.delete(`job:${jobId}`);
+  await env.QUEUE_KV.delete(`svg:${jobId}`);
+}
+
+async function pruneOldestForRoom(env, maxActive) {
+  let jobs = await listJobs(env);
+  let active = jobs.filter(job => ["queued", "plotting"].includes(job.status || "queued")).length;
+  const pruned = [];
+
+  while (active >= maxActive) {
+    const candidate = pruneCandidates(jobs).find(job => !pruned.includes(job.id));
+    if (!candidate) break;
+    await deleteJob(env, candidate.id);
+    pruned.push(candidate.id);
+    if ((candidate.status || "queued") === "queued") active -= 1;
+    jobs = jobs.filter(job => job.id !== candidate.id);
+  }
+
+  if (pruned.length) {
+    await putJobIndex(env, (await getJobIndex(env)).filter(id => !pruned.includes(id)));
+  }
+
+  return active < maxActive ? pruned : null;
+}
+
 async function readRequestData(request) {
   const contentType = request.headers.get("Content-Type") || "";
   if (contentType.includes("application/json")) {
@@ -107,8 +139,9 @@ async function readRequestData(request) {
 
 async function handleCreate(request, env) {
   const maxActive = Number(env.MAX_ACTIVE || DEFAULT_MAX_ACTIVE);
-  if (await countActive(env) >= maxActive) {
-    return json({ error: `queue full; max active jobs is ${maxActive}` }, 409);
+  const pruned = await pruneOldestForRoom(env, maxActive);
+  if (pruned === null) {
+    return json({ error: `queue full; max active jobs is ${maxActive}; no non-plotting jobs available to prune` }, 409);
   }
 
   let data;
@@ -143,7 +176,7 @@ async function handleCreate(request, env) {
   await env.QUEUE_KV.put(`svg:${jobId}`, svg);
   await putJobIndex(env, [jobId, ...await getJobIndex(env)]);
 
-  return json({ ...publicJob(job), job_id: jobId, delete_token: deleteToken }, 201);
+  return json({ ...publicJob(job), job_id: jobId, delete_token: deleteToken, pruned }, 201);
 }
 
 async function handleList(request, env) {
@@ -189,8 +222,7 @@ async function handleDelete(request, env, jobId) {
     return json({ error: "delete token required" }, 401);
   }
 
-  await env.QUEUE_KV.delete(`job:${jobId}`);
-  await env.QUEUE_KV.delete(`svg:${jobId}`);
+  await deleteJob(env, jobId);
   await putJobIndex(env, (await getJobIndex(env)).filter(id => id !== jobId));
   return json({ deleted: jobId });
 }
