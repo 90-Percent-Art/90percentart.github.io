@@ -522,6 +522,8 @@
 
             // ── Queue strip ───────────────────────────────────────────────────
             var _stripTimer = null;
+            var _stripFetchInFlight = false;
+            var QUEUE_REFRESH_MS = 3000;
             var _thumbBlobUrls = {};   // jobId → blob URL (cleaned up on re-render)
 
             function timeAgo(ts) {
@@ -664,17 +666,24 @@
             }
 
             function fetchAndRenderStrip() {
+                if (_stripFetchInFlight || document.hidden) return;
+                _stripFetchInFlight = true;
                 fetch(getUrl() + '/jobs', { headers: queueHeaders() })
                     .then(function(r) { return r.json(); })
                     .then(function(jobs) { renderQueueStrip(jobs); })
-                    .catch(function() {});
+                    .catch(function() {})
+                    .finally(function() { _stripFetchInFlight = false; });
             }
 
             document.getElementById('queueRefreshBtn').addEventListener('click', fetchAndRenderStrip);
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) fetchAndRenderStrip();
+            });
+            window.addEventListener('focus', fetchAndRenderStrip);
 
             loadQueueCfg();
             fetchAndRenderStrip();
-            _stripTimer = setInterval(fetchAndRenderStrip, 10000);
+            _stripTimer = setInterval(fetchAndRenderStrip, QUEUE_REFRESH_MS);
         })();
         // ──────────────────────────────────────────────────────────────────────
 
