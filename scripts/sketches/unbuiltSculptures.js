@@ -38,7 +38,7 @@ window.sketches['unbuiltSculptures'] = function(p) {
                 { value: 'xray', label: 'Xray' },
                 { value: 'trimBehind', label: 'Trim behind' }
               ]},
-            { id: 'sculptureCount', label: 'Sculptures', type: 'range', min: 1, max: 4, step: 1, value: PARAMS.sculptureCount },
+            { id: 'sculptureCount', label: 'Sculptures', type: 'range', min: 1, max: 12, step: 1, value: PARAMS.sculptureCount },
             { id: 'blendSteps', label: 'Blend steps', type: 'range', min: 12, max: 150, step: 1, value: PARAMS.blendSteps },
             { id: 'spacingMode', label: 'Spacing', type: 'select', value: PARAMS.spacingMode,
               options: [{ value: 'distance', label: 'Equal distance' }, { value: 'parametric', label: 'Per segment' }] },
@@ -70,6 +70,26 @@ window.sketches['unbuiltSculptures'] = function(p) {
         },
         reseed: function() {
             buildPreset(PARAMS.preset);
+            p.redraw();
+        },
+        randomize: function() {
+            PARAMS.sculptureCount = randInt(4, 12);
+            PARAMS.blendSteps = randInt(36, 130);
+            PARAMS.spacingMode = Math.random() < 0.75 ? 'distance' : 'parametric';
+            PARAMS.curveSamples = randInt(24, 96);
+            PARAMS.parentVertices = randInt(5, 14);
+            PARAMS.spineSamples = randInt(5, 24);
+            PARAMS.crossLines = Math.random() < 0.35 ? 0 : randInt(8, 56);
+
+            syncParamControl('sculptureCount', PARAMS.sculptureCount);
+            syncParamControl('blendSteps', PARAMS.blendSteps);
+            syncParamControl('spacingMode', PARAMS.spacingMode);
+            syncParamControl('curveSamples', PARAMS.curveSamples);
+            syncParamControl('parentVertices', PARAMS.parentVertices);
+            syncParamControl('spineSamples', PARAMS.spineSamples);
+            syncParamControl('crossLines', PARAMS.crossLines);
+
+            buildFieldComposition();
             p.redraw();
         },
         setParam: function(name, val) {
@@ -279,6 +299,31 @@ window.sketches['unbuiltSculptures'] = function(p) {
         return unit;
     }
 
+    function makeFieldSculpture(index, count, settingsSource) {
+        var data = randomSculptureData({ index: index, count: count, field: true });
+        var settings = copySettings(settingsSource || PARAMS);
+        var unit = {
+            spine: data.spine,
+            parents: [],
+            settings: settings,
+            colorIndex: index
+        };
+        for (var i = 0; i < data.parentDefs.length; i++) {
+            unit.parents.push(makeBlob(data.parentDefs[i], settings.parentVertices));
+        }
+        return unit;
+    }
+
+    function buildFieldComposition() {
+        sculptures = [];
+        selectedUnit = -1;
+        var count = Math.max(1, PARAMS.sculptureCount);
+        for (var i = 0; i < count; i++) {
+            sculptures.push(makeFieldSculpture(i, count, PARAMS));
+        }
+        syncScopedParamControls();
+    }
+
     function presetData(preset, index) {
         if (preset === 'single') {
             return {
@@ -362,11 +407,24 @@ window.sketches['unbuiltSculptures'] = function(p) {
         };
     }
 
-    function randomSculptureData() {
-        var cx = 0.25 + Math.random() * 0.50;
-        var cy = 0.25 + Math.random() * 0.50;
-        var rx = 0.16 + Math.random() * 0.15;
-        var ry = 0.13 + Math.random() * 0.13;
+    function randomSculptureData(options) {
+        options = options || {};
+        var cx, cy, rx, ry;
+        if (options.field) {
+            var count = Math.max(1, options.count || 1);
+            var t = count === 1 ? 0.72 : options.index / (count - 1);
+            var lane = (options.index * 0.61803398875 + Math.random() * 0.34) % 1;
+            var scale = 0.42 + Math.pow(t, 1.25) * 1.05 + Math.random() * 0.14;
+            cx = 0.13 + lane * 0.74 + randomSigned(0.045);
+            cy = 0.15 + t * 0.72 + randomSigned(0.055);
+            rx = (0.075 + Math.random() * 0.055) * scale;
+            ry = (0.060 + Math.random() * 0.050) * scale;
+        } else {
+            cx = 0.25 + Math.random() * 0.50;
+            cy = 0.25 + Math.random() * 0.50;
+            rx = 0.16 + Math.random() * 0.15;
+            ry = 0.13 + Math.random() * 0.13;
+        }
         var rot = randomSigned(Math.PI * 0.25);
         var spineCount = 6 + Math.floor(Math.random() * 3);
         var spine = [];
@@ -390,8 +448,8 @@ window.sketches['unbuiltSculptures'] = function(p) {
             parentDefs.push({
                 x: anchor.x,
                 y: anchor.y,
-                rx: 0.08 + Math.random() * 0.10,
-                ry: 0.06 + Math.random() * 0.10,
+                rx: (options.field ? rx * (0.42 + Math.random() * 0.38) : 0.08 + Math.random() * 0.10),
+                ry: (options.field ? ry * (0.42 + Math.random() * 0.38) : 0.06 + Math.random() * 0.10),
                 rot: rot + randomSigned(Math.PI * 0.18),
                 phase: Math.random() * Math.PI * 2
             });
@@ -1362,6 +1420,10 @@ window.sketches['unbuiltSculptures'] = function(p) {
 
     function randomSigned(amount) {
         return (Math.random() * 2 - 1) * amount;
+    }
+
+    function randInt(min, max) {
+        return min + Math.floor(Math.random() * (max - min + 1));
     }
 
     function closedPathSelfIntersects(points) {

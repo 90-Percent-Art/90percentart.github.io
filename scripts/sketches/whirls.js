@@ -375,12 +375,18 @@ window.sketches['whirls'] = function(p) {
         return out;
     }
 
+    function effectiveHatchDensity() {
+        var penMm = Math.max(0.1, Number(PARAMS.penWidthMm) || 0.4);
+        return Math.min(PARAMS.density, 1 / penMm);
+    }
+
     function fillLinesForCell(cell) {
         var hatchDeg = cell.tangAng * 180 / Math.PI + 90 + PARAMS.fillAngle;
-        var spacing = (paper.DPI / 25.4) / PARAMS.density;
+        var density = effectiveHatchDensity();
+        var spacing = (paper.DPI / 25.4) / density;
         var phase = (cell.colorIdx % 100000) * 0.001;
-        if (PARAMS.fillStyle === 'zigzagHatch') return zigzagQuad(cell.quad, hatchDeg, PARAMS.density, phase);
-        var lines = hatchQuad(cell.quad, hatchDeg, PARAMS.density);
+        if (PARAMS.fillStyle === 'zigzagHatch') return zigzagQuad(cell.quad, hatchDeg, density, phase);
+        var lines = hatchQuad(cell.quad, hatchDeg, density);
         if (PARAMS.fillStyle === 'sketchHatch' || PARAMS.fillStyle === 'streakHatch') {
             var broken = PARAMS.fillStyle === 'streakHatch';
             var wobble = spacing * PARAMS.fillJitter * (broken ? 0.9 : 0.45);
