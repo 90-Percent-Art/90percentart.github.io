@@ -16,7 +16,7 @@ window.sketches['whirls'] = function(p) {
         density: 2.0,
         showBorder: true,
         overlapMode: 'erase',
-        fillStyle: 'solid',
+        fillStyle: 'hatch',
         fillAngle: 0,
         fillJitter: 0.35,
         viewMode: 'normal',
@@ -73,16 +73,15 @@ window.sketches['whirls'] = function(p) {
             { id: 'swirlStrength', label: 'Swirl pull', type: 'range', min: 0, max: 100, step: 1, value: 70,
               visibleWhen: { param: 'pathMode', values: ['sharedSwirl', 'curlyq'] },
               _toInternal: function(v) { return v / 100; } },
-            { id: 'fillStyle', label: 'Fill texture', type: 'select', value: 'solid', group: 'textures',
+            { id: 'fillStyle', label: 'Stroke texture', type: 'select', value: 'hatch', group: 'textures',
               options: [
-                { value: 'solid', label: 'Solid' },
                 { value: 'hatch', label: 'Hatch' },
                 { value: 'sketchHatch', label: 'Sketch hatch' },
                 { value: 'streakHatch', label: 'Streak hatch' },
                 { value: 'zigzagHatch', label: 'Zigzag hatch' }
               ] },
-            { id: 'fillAngle', label: 'Fill angle offset', type: 'range', min: -90, max: 90, step: 1, value: 0, group: 'textures' },
-            { id: 'fillJitter', label: 'Fill imperfection', type: 'range', min: 0, max: 100, step: 1, value: 35, group: 'textures',
+            { id: 'fillAngle', label: 'Stroke angle offset', type: 'range', min: -90, max: 90, step: 1, value: 0, group: 'textures' },
+            { id: 'fillJitter', label: 'Stroke imperfection', type: 'range', min: 0, max: 100, step: 1, value: 35, group: 'textures',
               _toInternal: function(v) { return v / 100; } },
             { id: 'density',    label: 'Hatch density',type: 'range', min: 5,  max: 50,  step: 1,   value: 20, group: 'textures',
               _toInternal: function(v) { return v / 10; } },
@@ -109,7 +108,7 @@ window.sketches['whirls'] = function(p) {
             if (name === 'density')     PARAMS.density = val;
             if (name === 'showBorder')  PARAMS.showBorder = val === 'on';
             if (name === 'overlapMode') PARAMS.overlapMode = val;
-            if (name === 'fillStyle')   PARAMS.fillStyle = val;
+            if (name === 'fillStyle')   PARAMS.fillStyle = val === 'solid' ? 'hatch' : val;
             if (name === 'fillAngle')   PARAMS.fillAngle = Number(val);
             if (name === 'fillJitter')  PARAMS.fillJitter = val;
             if (name === 'penWidthMm')  PARAMS.penWidthMm = Number(val);
@@ -411,26 +410,18 @@ window.sketches['whirls'] = function(p) {
 
     function drawCells(whirl, strokeW) {
         whirl.cells.forEach(function(cell) {
-            if (PARAMS.fillStyle === 'solid') {
-                p.fill(getCellColor(cell));
-                if (PARAMS.showBorder) { p.stroke(0); p.strokeWeight(strokeW*1.5); } else p.noStroke();
+            p.noFill();
+            p.stroke(getCellColor(cell));
+            p.strokeWeight(strokeW);
+            fillLinesForCell(cell).forEach(function(ln) {
+                p.line(ln.x1, ln.y1, ln.x2, ln.y2);
+            });
+            if (PARAMS.showBorder) {
+                p.stroke(0);
+                p.strokeWeight(strokeW*1.5);
                 p.beginShape();
                 cell.quad.forEach(function(pt){ p.vertex(pt.x, pt.y); });
                 p.endShape(p.CLOSE);
-            } else {
-                p.noFill();
-                p.stroke(getCellColor(cell));
-                p.strokeWeight(strokeW);
-                fillLinesForCell(cell).forEach(function(ln) {
-                    p.line(ln.x1, ln.y1, ln.x2, ln.y2);
-                });
-                if (PARAMS.showBorder) {
-                    p.stroke(0);
-                    p.strokeWeight(strokeW*1.5);
-                    p.beginShape();
-                    cell.quad.forEach(function(pt){ p.vertex(pt.x, pt.y); });
-                    p.endShape(p.CLOSE);
-                }
             }
         });
     }
@@ -493,11 +484,6 @@ window.sketches['whirls'] = function(p) {
 
             whirl.cells.forEach(function(cell) {
                 var color = getCellColor(cell);
-                if (PARAMS.fillStyle === 'solid') {
-                    var pts = cell.quad.map(function(pt){return fmt(pt.x)+','+fmt(pt.y);}).join(' ');
-                    parts.push('<polygon points="'+pts+'" fill="'+color+'" stroke="none"/>');
-                    return;
-                }
                 fillLinesForCell(cell).forEach(function(ln) {
                     var segs=[{x1:ln.x1,y1:ln.y1,x2:ln.x2,y2:ln.y2}];
                     clipOutlines.forEach(function(outline) {
