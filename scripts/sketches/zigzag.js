@@ -9,6 +9,8 @@ window.sketches['zigzag'] = function(p) {
         HATCH_SPACING: 3.5,
         HATCH_JITTER: 0.4,
         HATCH_WEIGHT_MM: 0.4,
+        ZIGZAG_MODE: 'random',
+        ZIGZAG_LENGTH: 120,
         CURVE_ENABLED: true,
         CURVE_MAG: 1,
         CURVE_FREQ: 0.5,
@@ -38,6 +40,13 @@ window.sketches['zigzag'] = function(p) {
                 { value: 'custom', label: 'Custom' }
               ]},
             { id: 'blockCount',    label: 'Block count',    type: 'range', min: 0, max: 8,    step: 1,    value: 0 },
+            { id: 'zigzagMode', label: 'Zigzag rules', type: 'select', value: 'random',
+              options: [
+                { value: 'random', label: 'Loose/random' },
+                { value: 'snap45', label: 'Snap 45s' },
+                { value: 'snap3060', label: 'Snap 30/60s' }
+              ] },
+            { id: 'zigzagLength', label: 'Zigzag length', type: 'range', min: 40, max: 260, step: 5, value: 120 },
             { id: 'hatchSpacing',  label: 'Hatch spacing',  type: 'range', min: 1, max: 12,   step: 1,    value: 4 },
             { id: 'hatchJitter',   label: 'Line jitter',    type: 'range', min: 0, max: 10,   step: 1,    value: 4,
               _toInternal: function(v){ return v/10; } },
@@ -90,6 +99,8 @@ window.sketches['zigzag'] = function(p) {
         if (name === 'paperSize')   PARAMS.paperSize = val;
         if (name === 'margin')      PARAMS.margin = Number(val);
         if (name === 'blockCount')   PARAMS.BLOCK_COUNT = val;
+        if (name === 'zigzagMode')   PARAMS.ZIGZAG_MODE = val;
+        if (name === 'zigzagLength') PARAMS.ZIGZAG_LENGTH = Number(val);
         if (name === 'hatchSpacing') PARAMS.HATCH_SPACING = val;
         if (name === 'hatchWeight')  PARAMS.HATCH_WEIGHT_MM = Number(val);
         if (name === 'hatchJitter')  PARAMS.HATCH_JITTER = val;
@@ -98,7 +109,9 @@ window.sketches['zigzag'] = function(p) {
         if (name === 'alpha')        { PARAMS.ALPHA = val; for (var b of blocks) setBlockAlpha(b, val); }
         if (name === 'viewMode')     PARAMS.viewMode = val;
         if (name === 'palette')      { PARAMS.palette = Array.isArray(val) && val.length ? val : PARAMS.palette; recolor(); }
-        if (name === 'paperSize' || name === 'margin' || name === 'blockCount') randomizeAll();
+        if (name === 'blockCount') syncBlockCount();
+        if (name === 'zigzagMode' || name === 'zigzagLength') rebuildBlockConnectors();
+        if (name === 'paperSize' || name === 'margin') randomizeAll();
     }
 
     function resizeIfNeeded() {
@@ -233,6 +246,12 @@ window.sketches['zigzag'] = function(p) {
     }
 
     function sampleConnAngle() {
+        if (PARAMS.ZIGZAG_MODE === 'snap45') {
+            return p.radians(p.random([45, 135, 225, 315]));
+        }
+        if (PARAMS.ZIGZAG_MODE === 'snap3060') {
+            return p.radians(p.random([30, 60, 120, 150, 210, 240, 300, 330]));
+        }
         var base = p.random([20,30,40,50,60,70]);
         var usePos = p.random() < 0.75;
         if (usePos) {
@@ -245,48 +264,73 @@ window.sketches['zigzag'] = function(p) {
     function sampleOffset(h) {
         var ang = sampleConnAngle();
         var cosA=Math.cos(ang), sinA=Math.sin(ang);
-        var maxX=260, maxY=320;
+        var maxX=PARAMS.ZIGZAG_MODE === 'random' ? 260 : 360;
+        var maxY=PARAMS.ZIGZAG_MODE === 'random' ? 320 : 420;
         var lims=[];
         if (Math.abs(cosA)>1e-4) lims.push(Math.abs(maxX/cosA));
         if (sinA>0)  lims.push(maxY/sinA);
         if (sinA<0)  lims.push(Math.abs(maxY/sinA));
         var maxLen = lims.length ? Math.min.apply(null,lims.filter(function(n){return isFinite(n)&&n>0;})) : 150;
-        maxLen = Math.min(maxLen, h*2.5);
-        var minLen = Math.min(Math.max(h*0.5,40),maxLen);
-        if (minLen>maxLen) minLen=maxLen*0.9;
-        var len = p.random(minLen,maxLen);
+        var targetLen = Math.max(20, PARAMS.ZIGZAG_LENGTH);
+        maxLen = Math.min(maxLen, Math.max(targetLen * 1.45, h*1.25));
+        var len;
+        if (PARAMS.ZIGZAG_MODE === 'random') {
+            var minLen = Math.min(Math.max(25, targetLen * 0.55),maxLen);
+            if (minLen>maxLen) minLen=maxLen*0.9;
+            len = p.random(minLen,maxLen);
+        } else {
+            len = Math.min(maxLen, targetLen);
+        }
         return {x:len*cosA, y:len*sinA};
     }
 
-    function makeZigBlock() {
-        var w = p.random(200,340), h = p.random(90,140);
-        var segCount = p.random([3,5,7]);
-        var rectCount = (segCount+1)>>1;
-        var conns = rectCount-1;
-        var offs = [];
-        for (var k=0;k<conns;k++) offs.push(sampleOffset(h));
-
+    function buildBlockRects(w, h, offs, base) {
         var x=0, y=0, minx=0, maxx=w, miny=-h, maxy=0;
-        for (var o of offs) {
+        for (var oi=0; oi<offs.length; oi++) {
+            var o = offs[oi];
             x+=o.x; y+=o.y;
             minx=Math.min(minx,x); maxx=Math.max(maxx,x+w);
             miny=Math.min(miny,y-h); maxy=Math.max(maxy,y);
         }
         var pad = Math.max(24, paper.getMarginPixels(PARAMS.margin));
-        var baseX=p.random(pad-minx, p.width-pad-maxx);
-        var baseY=p.random(pad-miny, p.height-pad-maxy);
+        var loX = pad-minx, hiX = p.width-pad-maxx;
+        var loY = pad-miny, hiY = p.height-pad-maxy;
+        var baseX = base ? base.x : (hiX >= loX ? p.random(loX, hiX) : (loX + hiX) / 2);
+        var baseY = base ? base.y : (hiY >= loY ? p.random(loY, hiY) : (loY + hiY) / 2);
+        baseX = hiX >= loX ? p.constrain(baseX, loX, hiX) : (loX + hiX) / 2;
+        baseY = hiY >= loY ? p.constrain(baseY, loY, hiY) : (loY + hiY) / 2;
 
         var rects=[];
         var cur={x:baseX, y:baseY};
         rects.push({bl:{x:cur.x,y:cur.y}, w:w, h:h});
-        for (var o of offs) {
-            cur={x:cur.x+o.x, y:cur.y+o.y};
+        for (var oj=0; oj<offs.length; oj++) {
+            cur={x:cur.x+offs[oj].x, y:cur.y+offs[oj].y};
             rects.push({bl:{x:cur.x,y:cur.y}, w:w, h:h});
         }
+        return rects;
+    }
+
+    function makeBlockOffsets(h, conns) {
+        var offs = [];
+        for (var k=0;k<conns;k++) offs.push(sampleOffset(h));
+        return offs;
+    }
+
+    function makeZigBlock(shapeHint) {
+        var w = shapeHint && shapeHint.w ? shapeHint.w : p.random(200,340);
+        var h = shapeHint && shapeHint.h ? shapeHint.h : p.random(90,140);
+        var segCount = shapeHint && shapeHint.segCount ? shapeHint.segCount : p.random([3,5,7]);
+        var rectCount = (segCount+1)>>1;
+        var conns = rectCount-1;
+        var offs = makeBlockOffsets(h, conns);
+        var rects = buildBlockRects(w, h, offs);
 
         return {
             rects: rects,
             offs: offs,
+            w: w,
+            h: h,
+            segCount: segCount,
             colors: buildColors(rectCount,conns),
             angles: sampleAngles(rectCount),
             seed: Math.floor(p.random(1, 1000000000))
@@ -468,6 +512,21 @@ window.sketches['zigzag'] = function(p) {
         blocks.length=0;
         var n=PARAMS.BLOCK_COUNT>0?PARAMS.BLOCK_COUNT:Math.floor(p.random(1,7));
         for (var i=0;i<n;i++) blocks.push(makeZigBlock());
+    }
+
+    function syncBlockCount() {
+        var target = PARAMS.BLOCK_COUNT > 0 ? PARAMS.BLOCK_COUNT : (blocks.length || Math.floor(p.random(1,7)));
+        while (blocks.length < target) blocks.push(makeZigBlock());
+        if (blocks.length > target) blocks.length = target;
+    }
+
+    function rebuildBlockConnectors() {
+        for (var i=0; i<blocks.length; i++) {
+            var b = blocks[i];
+            var conns = Math.max(0, b.rects.length - 1);
+            b.offs = makeBlockOffsets(b.h || b.rects[0].h, conns);
+            b.rects = buildBlockRects(b.w || b.rects[0].w, b.h || b.rects[0].h, b.offs, b.rects[0].bl);
+        }
     }
 
     function colorToSvg(col) {
