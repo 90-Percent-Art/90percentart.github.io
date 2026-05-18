@@ -20,6 +20,12 @@ window.sketches['blendTest'] = function(p) {
         ]),
         regenerate: function(){ try{ p.redraw(); }catch(e){} },
         reseed:     function(){ try{ p.redraw(); }catch(e){} },
+        getRecipe: function() {
+            return { state: {} };
+        },
+        applyRecipeState: function() {
+            try{ p.redraw(); }catch(e){}
+        },
         togglePause: function(){ return false; },
         setParam: function(name, val) {
             var f = api.params.find(function(x){ return x.id === name; });
