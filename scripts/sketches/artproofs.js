@@ -675,6 +675,16 @@ window.sketches['artproofs'] = function(p) {
         ]),
         regenerate: function() { resizeIfNeeded(); buildElements(); try { p.redraw(); } catch(e) {} },
         reseed: function() { globalSeed = Math.floor(Math.random() * 1e8) + 1; buildElements(); try { p.redraw(); } catch(e) {} },
+        getRecipe: function() {
+            return { state: { globalSeed: globalSeed } };
+        },
+        applyRecipeState: function(state) {
+            if (state && Number.isFinite(Number(state.globalSeed))) {
+                globalSeed = Number(state.globalSeed);
+                buildElements();
+                try { p.redraw(); } catch(e) {}
+            }
+        },
         togglePause: function() { return false; },
         setParam: function(name, rawVal) {
             var pdef = api.params.find(function(x) { return x.id === name; });

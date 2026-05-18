@@ -134,6 +134,15 @@ window.sketches['cmyk'] = function(p) {
             PARAMS.fieldSeed = Math.floor(Math.random() * 1e6);
             p.redraw();
         },
+        getRecipe: function() {
+            return { state: { fieldSeed: PARAMS.fieldSeed } };
+        },
+        applyRecipeState: function(state) {
+            if (state && Number.isFinite(Number(state.fieldSeed))) {
+                PARAMS.fieldSeed = Number(state.fieldSeed);
+                p.redraw();
+            }
+        },
         saveSVG: function() {
             var dims = paper.getPaperPixels(PARAMS.paperSize);
             var marginPx  = paper.getMarginPixels(PARAMS.margin);

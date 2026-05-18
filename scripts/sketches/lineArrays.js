@@ -106,6 +106,37 @@ window.sketches['lineArrays'] = function(p) {
             randomizeComposition();
             p.redraw();
         },
+        getRecipe: function() {
+            return {
+                state: {
+                    ditherSeed: ditherSeed,
+                    rowNodes: cloneJson(rowNodes),
+                    rowSettings: cloneJson(rowSettings),
+                    rowSegmentColors: cloneJson(rowSegmentColors),
+                    rowUnitDepths: cloneJson(rowUnitDepths),
+                    rowBandDepths: cloneJson(rowBandDepths)
+                }
+            };
+        },
+        applyRecipeState: function(state) {
+            if (!state || !Array.isArray(state.rowNodes)) return;
+            ditherSeed = Number(state.ditherSeed || ditherSeed);
+            rowNodes = cloneJson(state.rowNodes);
+            rowSettings = cloneJson(state.rowSettings || rowNodes.map(function() { return defaultSettings(); }));
+            rowSegmentColors = cloneJson(state.rowSegmentColors || rowNodes.map(function() { return []; }));
+            rowUnitDepths = cloneJson(state.rowUnitDepths || rowNodes.map(function(nodes) { return defaultUnitDepths(nodes); }));
+            rowBandDepths = cloneJson(state.rowBandDepths || rowNodes.map(function(_, i) { return defaultBandDepths(i); }));
+            PARAMS.rowCount = rowNodes.length;
+            selectedSegment = -1;
+            selectedRow = -1;
+            selectedUnit = -1;
+            selectedLine = null;
+            selectedNode = null;
+            activeDepthNode = null;
+            dragTarget = null;
+            hoverTarget = null;
+            p.redraw();
+        },
         setParam: function(name, val) {
             var pdef = api.params.find(function(x){ return x.id === name; });
             if (pdef) pdef.value = val;
@@ -218,6 +249,10 @@ window.sketches['lineArrays'] = function(p) {
     }
 
     function cloneNodes(src) { return src.map(function(n){ return { x: n.x, y: n.y }; }); }
+
+    function cloneJson(value) {
+        return JSON.parse(JSON.stringify(value));
+    }
 
     function rand(lo, hi) {
         return lo + Math.random() * (hi - lo);

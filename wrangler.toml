@@ -14,6 +14,7 @@ id = "9f8cf04a9f8e4da1b8bbae8d42b39a6c"
 [vars]
 MAX_ACTIVE = "50"
 MAX_SVG_BYTES = "10000000"
+MAX_RECIPE_BYTES = "524288"
 
 # Set the admin token as a secret, not in this file:
 #   npx wrangler secret put ADMIN_TOKEN

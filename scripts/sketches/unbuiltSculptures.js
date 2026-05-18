@@ -92,6 +92,21 @@ window.sketches['unbuiltSculptures'] = function(p) {
             buildFieldComposition();
             p.redraw();
         },
+        getRecipe: function() {
+            return { state: { sculptures: cloneJson(sculptures) } };
+        },
+        applyRecipeState: function(state) {
+            if (!state || !Array.isArray(state.sculptures)) return;
+            sculptures = cloneJson(state.sculptures);
+            PARAMS.sculptureCount = Math.max(1, sculptures.length);
+            syncParamControl('sculptureCount', PARAMS.sculptureCount);
+            selectedUnit = -1;
+            hoverTarget = null;
+            dragTarget = null;
+            lastPointer = null;
+            syncScopedParamControls();
+            p.redraw();
+        },
         setParam: function(name, val) {
             var pdef = api.params.find(function(x) { return x.id === name; });
             if (pdef) pdef.value = val;
@@ -190,6 +205,10 @@ window.sketches['unbuiltSculptures'] = function(p) {
 
     function defaultSettings() {
         return copySettings(PARAMS);
+    }
+
+    function cloneJson(value) {
+        return JSON.parse(JSON.stringify(value));
     }
 
     function copySettings(source) {

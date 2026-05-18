@@ -65,6 +65,15 @@ window.sketches['zigzag'] = function(p) {
         regenerate: function() { resizeIfNeeded(); p.redraw(); },
         togglePause: function() { paused = !paused; return paused; },
         reseed: function() { randomizeAll(); p.redraw(); },
+        getRecipe: function() {
+            return { state: { blocks: blocks.map(blockToRecipe) } };
+        },
+        applyRecipeState: function(state) {
+            if (state && Array.isArray(state.blocks)) {
+                blocks = state.blocks.map(blockFromRecipe).filter(Boolean);
+                p.redraw();
+            }
+        },
         saveSVG: function() {
             var dims = paper.getPaperPixels(PARAMS.paperSize);
             var strokeWidth = Math.max(0.5, paper.mmToPixels(PARAMS.HATCH_WEIGHT_MM));
@@ -529,12 +538,61 @@ window.sketches['zigzag'] = function(p) {
         }
     }
 
+    function clonePoint(pt) {
+        return { x: Number(pt.x), y: Number(pt.y) };
+    }
+
+    function blockToRecipe(block) {
+        return {
+            rects: block.rects.map(function(rect) {
+                return { bl: clonePoint(rect.bl), w: Number(rect.w), h: Number(rect.h) };
+            }),
+            offs: block.offs.map(clonePoint),
+            w: Number(block.w),
+            h: Number(block.h),
+            segCount: Number(block.segCount),
+            colors: {
+                rects: block.colors.rects.map(colorHexValue),
+                conns: block.colors.conns.map(colorHexValue)
+            },
+            angles: block.angles.map(Number),
+            seed: Number(block.seed)
+        };
+    }
+
+    function blockFromRecipe(raw) {
+        if (!raw || !Array.isArray(raw.rects)) return null;
+        return {
+            rects: raw.rects.map(function(rect) {
+                return {
+                    bl: clonePoint(rect.bl || { x: 0, y: 0 }),
+                    w: Number(rect.w),
+                    h: Number(rect.h)
+                };
+            }),
+            offs: Array.isArray(raw.offs) ? raw.offs.map(clonePoint) : [],
+            w: Number(raw.w || (raw.rects[0] && raw.rects[0].w) || 0),
+            h: Number(raw.h || (raw.rects[0] && raw.rects[0].h) || 0),
+            segCount: Number(raw.segCount || 3),
+            colors: {
+                rects: ((raw.colors && raw.colors.rects) || ['#000000']).map(makeColorWithAlpha),
+                conns: ((raw.colors && raw.colors.conns) || ['#000000']).map(makeColorWithAlpha)
+            },
+            angles: Array.isArray(raw.angles) ? raw.angles.map(Number) : sampleAngles(raw.rects.length),
+            seed: Number(raw.seed || Math.floor(p.random(1, 1000000000)))
+        };
+    }
+
+    function colorHexValue(col) {
+        return '#' + [p.red(col), p.green(col), p.blue(col)].map(function(v){
+            var hex = Math.round(v).toString(16);
+            return hex.length === 1 ? '0' + hex : hex;
+        }).join('');
+    }
+
     function colorToSvg(col) {
         return {
-            stroke: '#' + [p.red(col), p.green(col), p.blue(col)].map(function(v){
-                var hex = Math.round(v).toString(16);
-                return hex.length === 1 ? '0' + hex : hex;
-            }).join(''),
+            stroke: colorHexValue(col),
             opacity: (typeof col._getAlpha === 'function' ? col._getAlpha() : PARAMS.ALPHA) / 255
         };
     }

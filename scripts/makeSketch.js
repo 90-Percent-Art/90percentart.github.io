@@ -283,6 +283,47 @@
             if (origRegen) origRegen();
         };
 
+        window.sketchAPI.getRecipe = function() {
+            var base = {
+                type: 'pl0tb0t-sketch-recipe',
+                version: 1,
+                sketch: lastSketchName || 'sketch',
+                params: window.sketchAPI.getParamsSnapshot ? window.sketchAPI.getParamsSnapshot() : [],
+                state: null
+            };
+            if (registeredApi && typeof registeredApi.getRecipe === 'function') {
+                try {
+                    var custom = registeredApi.getRecipe() || {};
+                    return Object.assign(base, custom, {
+                        type: custom.type || base.type,
+                        version: custom.version || base.version,
+                        sketch: custom.sketch || base.sketch,
+                        params: Array.isArray(custom.params) ? custom.params : base.params
+                    });
+                } catch(e) {
+                    console.error('registeredApi.getRecipe error', e);
+                }
+            }
+            return base;
+        };
+
+        window.sketchAPI.applyRecipe = function(recipe) {
+            if (!recipe || typeof recipe !== 'object') return;
+            if (registeredApi && typeof registeredApi.applyRecipe === 'function') {
+                try {
+                    registeredApi.applyRecipe(recipe);
+                    return;
+                } catch(e) {
+                    console.error('registeredApi.applyRecipe error', e);
+                }
+            }
+            if (Array.isArray(recipe.params)) window.sketchAPI.applyParamsSnapshot(recipe.params);
+            if (registeredApi && typeof registeredApi.applyRecipeState === 'function') {
+                try { registeredApi.applyRecipeState(recipe.state || {}, recipe); }
+                catch(e) { console.error('registeredApi.applyRecipeState error', e); }
+            }
+        };
+
         // Randomize: full randomize of creative params (not paper, not advanced)
         window.sketchAPI.randomize = function() {
             if (registeredApi && typeof registeredApi.randomize === 'function') {

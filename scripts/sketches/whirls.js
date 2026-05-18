@@ -91,6 +91,16 @@ window.sketches['whirls'] = function(p) {
         ]),
         regenerate: function() { resizeIfNeeded(); p.redraw(); },
         reseed: function() { globalSeed = Math.floor(Math.random() * 1e8) + 1; buildAllWhirls(); p.redraw(); },
+        getRecipe: function() {
+            return { state: { globalSeed: globalSeed } };
+        },
+        applyRecipeState: function(state) {
+            if (state && Number.isFinite(Number(state.globalSeed))) {
+                globalSeed = Number(state.globalSeed);
+                buildAllWhirls();
+                p.redraw();
+            }
+        },
         setParam: function(name, rawVal) {
             var pdef = api.params.find(function(x) { return x.id === name; });
             if (pdef) pdef.value = rawVal;

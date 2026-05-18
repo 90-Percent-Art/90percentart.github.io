@@ -471,15 +471,17 @@
                 var paperSize = (document.getElementById('paperSize') || {}).value || '8.5x11';
                 var snapshot  = window.sketchAPI && window.sketchAPI.getParamsSnapshot
                     ? window.sketchAPI.getParamsSnapshot() : [];
+                var recipe = window.sketchAPI && typeof window.sketchAPI.getRecipe === 'function'
+                    ? window.sketchAPI.getRecipe() : { sketch: sketchId, params: snapshot };
 
                 getSvgString().then(function(svgStr) {
-                    svgStr = embedSnapshot(svgStr, sketchId, snapshot);
+                    svgStr = embedSnapshot(svgStr, sketchId, recipe && Array.isArray(recipe.params) ? recipe.params : snapshot);
                     try { sessionStorage.setItem('pl0tb0t_last_queued_svg', svgStr); } catch(e) {}
                     queueStatus('Sending…', '#888');
                     return fetch(getUrl() + '/jobs', {
                         method: 'POST',
                         headers: queueHeaders({ 'Content-Type': 'application/json' }),
-                        body: JSON.stringify({ svg: svgStr, sketch_name: sketchId, paper_size: paperSize, orientation: 'portrait' })
+                        body: JSON.stringify({ svg: svgStr, recipe: recipe, sketch_name: sketchId, paper_size: paperSize, orientation: 'portrait' })
                     });
                 }).then(function(r) {
                     if (!r.ok) {
@@ -501,22 +503,45 @@
             });
 
             // ── Load job back into editor ──────────────────────────────────────
+            function applyRecipeToEditor(recipe) {
+                var sel = document.getElementById('sketchSelector');
+                var apply = function() {
+                    if (window.sketchAPI && typeof window.sketchAPI.applyRecipe === 'function') {
+                        window.sketchAPI.applyRecipe(recipe);
+                    } else if (window.sketchAPI && window.sketchAPI.applyParamsSnapshot) {
+                        window.sketchAPI.applyParamsSnapshot(recipe.params);
+                    }
+                };
+                if (sel && recipe.sketch && sel.value !== recipe.sketch) {
+                    sel.value = recipe.sketch;
+                    sel.dispatchEvent(new Event('change'));
+                    setTimeout(apply, 600);
+                } else {
+                    apply();
+                }
+            }
+
             function loadJobIntoEditor(jobId) {
-                fetch(getUrl() + '/jobs/' + jobId + '/svg', { headers: queueHeaders() })
+                fetch(getUrl() + '/jobs/' + jobId + '/recipe', { headers: queueHeaders() })
+                    .then(function(r) {
+                        if (!r.ok) throw new Error('recipe unavailable');
+                        return r.json();
+                    })
+                    .then(function(recipe) {
+                        applyRecipeToEditor(recipe);
+                    })
+                    .catch(function() {
+                        return loadJobSnapshotFromSvg(jobId);
+                    });
+            }
+
+            function loadJobSnapshotFromSvg(jobId) {
+                return fetch(getUrl() + '/jobs/' + jobId + '/svg', { headers: queueHeaders() })
                     .then(function(r) { return r.text(); })
                     .then(function(svgText) {
                         var snap = extractSnapshot(svgText);
                         if (!snap) { alert('No editor snapshot found in this job — it may have been queued before this feature was added.'); return; }
-                        var sel = document.getElementById('sketchSelector');
-                        var apply = function() {
-                            if (window.sketchAPI && window.sketchAPI.applyParamsSnapshot)
-                                window.sketchAPI.applyParamsSnapshot(snap.params);
-                        };
-                        if (sel && snap.sketch && sel.value !== snap.sketch) {
-                            sel.value = snap.sketch;
-                            sel.dispatchEvent(new Event('change'));
-                            setTimeout(apply, 600);   // wait for sketch to load
-                        } else { apply(); }
+                        applyRecipeToEditor({ sketch: snap.sketch, params: snap.params });
                     }).catch(function(e) { alert('Load failed: ' + e.message); });
             }
 

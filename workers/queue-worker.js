@@ -1,5 +1,6 @@
 const DEFAULT_MAX_ACTIVE = 50;
 const DEFAULT_MAX_SVG_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MAX_RECIPE_BYTES = 512 * 1024;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -110,6 +111,13 @@ function pruneCandidates(jobs) {
 async function deleteJob(env, jobId) {
   await env.QUEUE_KV.delete(`job:${jobId}`);
   await env.QUEUE_KV.delete(`svg:${jobId}`);
+  await env.QUEUE_KV.delete(`recipe:${jobId}`);
+}
+
+async function sha256Hex(textValue) {
+  const bytes = new TextEncoder().encode(textValue);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function pruneOldestForRoom(env, maxActive) {
@@ -170,6 +178,20 @@ async function handleCreate(request, env) {
   if (!svg || !/<svg[\s>]/i.test(svg)) return json({ error: "svg field required" }, 400);
   if (bytes > maxBytes) return json({ error: `svg too large; max ${maxBytes} bytes` }, 413);
 
+  let recipe = null;
+  let recipeBytes = 0;
+  if (data.recipe !== undefined && data.recipe !== null && data.recipe !== "") {
+    recipe = typeof data.recipe === "string" ? data.recipe : JSON.stringify(data.recipe);
+    recipeBytes = new TextEncoder().encode(recipe).length;
+    const maxRecipeBytes = Number(env.MAX_RECIPE_BYTES || DEFAULT_MAX_RECIPE_BYTES);
+    if (recipeBytes > maxRecipeBytes) return json({ error: `recipe too large; max ${maxRecipeBytes} bytes` }, 413);
+    try {
+      JSON.parse(recipe);
+    } catch {
+      return json({ error: "recipe must be valid JSON" }, 400);
+    }
+  }
+
   const jobId = randomId(4);
   const deleteToken = randomId(16);
   const job = {
@@ -182,11 +204,16 @@ async function handleCreate(request, env) {
     notes: String(data.notes || "").slice(0, 500),
     file_size: bytes,
     file_size_bytes: bytes,
+    svg_hash: await sha256Hex(svg),
+    has_recipe: !!recipe,
+    recipe_size: recipeBytes,
+    recipe_size_bytes: recipeBytes,
     delete_token: deleteToken,
   };
 
   await env.QUEUE_KV.put(`job:${jobId}`, JSON.stringify(job));
   await env.QUEUE_KV.put(`svg:${jobId}`, svg);
+  if (recipe) await env.QUEUE_KV.put(`recipe:${jobId}`, recipe);
   await putJobIndex(env, [jobId, ...pruneResult.jobs.map(job => job.id)]);
   await putPublicJobs(env, [job, ...pruneResult.jobs]);
 
@@ -210,6 +237,12 @@ async function handleGetSvg(jobId, env) {
   const svg = await env.QUEUE_KV.get(`svg:${jobId}`);
   if (!svg) return json({ error: "not found" }, 404);
   return text(svg, 200, "image/svg+xml; charset=utf-8");
+}
+
+async function handleGetRecipe(jobId, env) {
+  const recipe = await env.QUEUE_KV.get(`recipe:${jobId}`);
+  if (!recipe) return json({ error: "not found" }, 404);
+  return text(recipe, 200, "application/json; charset=utf-8");
 }
 
 async function handleStatus(request, env, jobId) {
@@ -260,7 +293,7 @@ export default {
       if (path === "/jobs" && request.method === "POST") return await handleCreate(request, env);
       if (path === "/jobs" && request.method === "GET") return await handleList(request, env);
 
-      const m = path.match(/^\/jobs\/([^/]+)(?:\/(svg|status))?$/);
+      const m = path.match(/^\/jobs\/([^/]+)(?:\/(svg|recipe|status))?$/);
       if (!m) return json({ error: "not found" }, 404);
 
       const jobId = m[1];
@@ -268,6 +301,7 @@ export default {
       if (!action && request.method === "GET") return await handleGetJob(jobId, env);
       if (!action && request.method === "DELETE") return await handleDelete(request, env, jobId);
       if (action === "svg" && request.method === "GET") return await handleGetSvg(jobId, env);
+      if (action === "recipe" && request.method === "GET") return await handleGetRecipe(jobId, env);
       if (action === "status" && request.method === "PATCH") return await handleStatus(request, env, jobId);
 
       return json({ error: "method not allowed" }, 405);

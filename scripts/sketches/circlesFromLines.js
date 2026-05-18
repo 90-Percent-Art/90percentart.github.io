@@ -123,6 +123,15 @@ window.sketches['circlesFromLines'] = function(p) {
         ]),
         regenerate: function(){ resizeIfNeeded(); try{ p.redraw(); }catch(e){} },
         reseed: function(){ globalSeed = Math.floor(Math.random() * 1e8) + 1; try{ p.redraw(); }catch(e){} },
+        getRecipe: function() {
+            return { state: { globalSeed: globalSeed } };
+        },
+        applyRecipeState: function(state) {
+            if (state && Number.isFinite(Number(state.globalSeed))) {
+                globalSeed = Number(state.globalSeed);
+                try{ p.redraw(); }catch(e){}
+            }
+        },
         togglePause: function(){ return false; },
         setParam: function(name, val) {
             var f = api.params.find(function(x){ return x.id === name; });
