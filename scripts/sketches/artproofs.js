@@ -55,7 +55,7 @@ window.sketches['artproofs'] = function(p) {
     }
 
     function randomFillStyle(rng) {
-        var styles = ['arcs', 'hatch', 'sketchHatch', 'streakHatch', 'zigzagHatch', 'crosshatch', 'waves', 'dots', 'bigDots', 'mixedDots', 'none'];
+        var styles = ['arcs', 'hatch', 'sketchHatch', 'streakHatch', 'zigzagHatch', 'crosshatch', 'waves', 'tileSprigs', 'tileRibbons', 'dots', 'bigDots', 'mixedDots', 'none'];
         return styles[Math.floor(rng() * styles.length)];
     }
 
@@ -266,6 +266,26 @@ window.sketches['artproofs'] = function(p) {
         return inside;
     }
 
+    function clipSegmentToPoly(x1, y1, x2, y2, poly) {
+        var dx = x2 - x1, dy = y2 - y1;
+        var ts = [0, 1];
+        for (var i = 0; i < poly.length; i++) {
+            var t = lineEdgeT(x1, y1, dx, dy, poly[i].x, poly[i].y, poly[(i + 1) % poly.length].x, poly[(i + 1) % poly.length].y);
+            if (t !== null && t >= 0 && t <= 1) ts.push(t);
+        }
+        ts.sort(function(a, b) { return a - b; });
+        var out = [];
+        for (var j = 0; j + 1 < ts.length; j++) {
+            var a = ts[j], b = ts[j + 1];
+            if (b - a < 1e-5) continue;
+            var mid = (a + b) / 2;
+            if (polyInside({ x: x1 + dx * mid, y: y1 + dy * mid }, poly)) {
+                out.push({ x1: x1 + dx * a, y1: y1 + dy * a, x2: x1 + dx * b, y2: y1 + dy * b });
+            }
+        }
+        return out;
+    }
+
     // Clip parallel hatch lines to a polygon; returns [{x1,y1,x2,y2}]
     function hatchSegs(poly, angleDeg, spacing) {
         var ang = angleDeg * Math.PI / 180;
@@ -317,7 +337,7 @@ window.sketches['artproofs'] = function(p) {
         for (var k = Math.floor(pMin / spacing); k * spacing <= pMax; k++) {
             var p0val = k * spacing;
             var run = [];
-            var samples = Math.max(16, Math.min(96, Math.ceil((tMax - tMin) / (spacing * 0.45))));
+            var samples = Math.max(10, Math.min(48, Math.ceil((tMax - tMin) / (spacing * 0.85))));
             for (var s = 0; s <= samples; s++) {
                 var tv2 = tMin + (tMax - tMin) * s / samples;
                 var waveOff = amplitude * Math.sin(frequency * tv2 + phase + k * 1.3);
@@ -333,6 +353,44 @@ window.sketches['artproofs'] = function(p) {
             }
             for (var r2 = 0; r2 + 1 < run.length; r2++)
                 segs.push({ x1: run[r2].x, y1: run[r2].y, x2: run[r2+1].x, y2: run[r2+1].y });
+        }
+        return segs;
+    }
+
+    function tilePatternSegs(poly, angleDeg, spacing, phase, mode) {
+        var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (var i = 0; i < poly.length; i++) {
+            minX = Math.min(minX, poly[i].x); maxX = Math.max(maxX, poly[i].x);
+            minY = Math.min(minY, poly[i].y); maxY = Math.max(maxY, poly[i].y);
+        }
+        var tile = Math.max(spacing * 3.2, 16);
+        var ang = angleDeg * Math.PI / 180;
+        var ca = Math.cos(ang), sa = Math.sin(ang);
+        var segs = [];
+        function addLocal(cx, cy, ax, ay, bx, by) {
+            var x1 = cx + ax * ca - ay * sa;
+            var y1 = cy + ax * sa + ay * ca;
+            var x2 = cx + bx * ca - by * sa;
+            var y2 = cy + bx * sa + by * ca;
+            Array.prototype.push.apply(segs, clipSegmentToPoly(x1, y1, x2, y2, poly));
+        }
+        for (var y = Math.floor((minY - tile) / tile) * tile; y <= maxY + tile; y += tile) {
+            for (var x = Math.floor((minX - tile) / tile) * tile; x <= maxX + tile; x += tile) {
+                var jx = Math.sin(x * 0.013 + y * 0.017 + phase) * tile * 0.12;
+                var jy = Math.cos(x * 0.011 - y * 0.019 + phase) * tile * 0.12;
+                var cx = x + tile * 0.5 + jx;
+                var cy = y + tile * 0.5 + jy;
+                if (mode === 'ribbons') {
+                    addLocal(cx, cy, -tile * 0.35, -tile * 0.18, -tile * 0.05,  tile * 0.18);
+                    addLocal(cx, cy, -tile * 0.05,  tile * 0.18,  tile * 0.35, -tile * 0.18);
+                    addLocal(cx, cy, -tile * 0.34,  tile * 0.20,  tile * 0.34,  tile * 0.20);
+                } else {
+                    addLocal(cx, cy, -tile * 0.30,  tile * 0.30,  tile * 0.28, -tile * 0.28);
+                    addLocal(cx, cy, -tile * 0.02,  tile * 0.02, -tile * 0.24, -tile * 0.08);
+                    addLocal(cx, cy,  tile * 0.08, -tile * 0.08,  tile * 0.30,  tile * 0.02);
+                    addLocal(cx, cy,  tile * 0.18, -tile * 0.18,  tile * 0.02, -tile * 0.32);
+                }
+            }
         }
         return segs;
     }
@@ -455,6 +513,9 @@ window.sketches['artproofs'] = function(p) {
         } else if (style === 'waves') {
             var ws = waveSegs(poly, el.fillAngle, sp, el.fillPhase || 0);
             for (var k = 0; k < ws.length; k++) p.line(ws[k].x1, ws[k].y1, ws[k].x2, ws[k].y2);
+        } else if (style === 'tileSprigs' || style === 'tileRibbons') {
+            var ts = tilePatternSegs(poly, el.fillAngle, sp, el.fillPhase || 0, style === 'tileRibbons' ? 'ribbons' : 'sprigs');
+            for (var t = 0; t < ts.length; t++) p.line(ts[t].x1, ts[t].y1, ts[t].x2, ts[t].y2);
         } else if (style === 'dots' || style === 'bigDots' || style === 'mixedDots') {
             var sizeMode = style === 'mixedDots' ? 'mixed' : (style === 'bigDots' ? 'big' : 'normal');
             var dotSpacing = style === 'bigDots' ? sp * 1.65 : sp;
@@ -494,12 +555,14 @@ window.sketches['artproofs'] = function(p) {
             segs = zigzagSegs(poly, el.fillAngle, sp * 1.2, el.fillPhase || 0);
         } else if (style === 'waves') {
             segs = waveSegs(poly, el.fillAngle, sp, el.fillPhase || 0);
+        } else if (style === 'tileSprigs' || style === 'tileRibbons') {
+            segs = tilePatternSegs(poly, el.fillAngle, sp, el.fillPhase || 0, style === 'tileRibbons' ? 'ribbons' : 'sprigs');
         } else if (style === 'dots' || style === 'bigDots' || style === 'mixedDots') {
             var sizeMode = style === 'mixedDots' ? 'mixed' : (style === 'bigDots' ? 'big' : 'normal');
             var dotSpacing = style === 'bigDots' ? sp * 1.65 : sp;
             dotPoints(poly, dotSpacing, el.fillPhase || 0, sizeMode).forEach(function(pt) {
                 var dotR = dotSpacing * pt.radiusScale;
-                lines.push('<circle cx="' + pt.x.toFixed(2) + '" cy="' + pt.y.toFixed(2) + '" r="' + dotR.toFixed(2) + '" fill="' + fc + '" stroke="none"/>');
+                lines.push('<circle cx="' + pt.x.toFixed(2) + '" cy="' + pt.y.toFixed(2) + '" r="' + dotR.toFixed(2) + '" fill="none" stroke="' + fc + '" stroke-width="' + swStr + '"/>');
             });
             return lines;
         }
@@ -585,8 +648,7 @@ window.sketches['artproofs'] = function(p) {
         var marginPx = paper.getMarginPixels(PARAMS.margin);
         var svgParts = [
             '<?xml version="1.0" encoding="utf-8"?>',
-            '<svg xmlns="http://www.w3.org/2000/svg" width="' + canvasW + '" height="' + canvasH + '">',
-            '<rect x="0" y="0" width="' + canvasW + '" height="' + canvasH + '" fill="white"/>',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="' + canvasW + '" height="' + canvasH + '" viewBox="0 0 ' + canvasW + ' ' + canvasH + '">',
             '<defs><clipPath id="mc"><rect x="' + marginPx + '" y="' + marginPx + '" width="' + (canvasW - marginPx * 2) + '" height="' + (canvasH - marginPx * 2) + '"/></clipPath></defs>',
             '<g clip-path="url(#mc)">'
         ];
@@ -661,13 +723,15 @@ window.sketches['artproofs'] = function(p) {
                 { value: 'zigzagHatch', label: 'Zigzag hatch' },
                 { value: 'crosshatch', label: 'Crosshatch' },
                 { value: 'waves',      label: 'Waves' },
+                { value: 'tileSprigs', label: 'Sprig tile' },
+                { value: 'tileRibbons', label: 'Ribbon tile' },
                 { value: 'dots',       label: 'Dots' },
                 { value: 'bigDots',    label: 'Big dots' },
                 { value: 'mixedDots',  label: 'Mixed dots' },
                 { value: 'none',       label: 'None' }
               ]},
             { id: 'fillAngle', label: 'Fill angle°', type: 'range', min: 0, max: 180, step: 1, value: 45, group: 'textures',
-              visibleWhen: { param: 'fillStyle', values: ['hatch', 'sketchHatch', 'streakHatch', 'zigzagHatch', 'crosshatch', 'waves', 'random'] } },
+              visibleWhen: { param: 'fillStyle', values: ['hatch', 'sketchHatch', 'streakHatch', 'zigzagHatch', 'crosshatch', 'waves', 'tileSprigs', 'tileRibbons', 'random'] } },
             { id: 'fillJitter', label: 'Fill jitter', type: 'range', min: 0, max: 100, step: 1, value: 0, group: 'textures' },
             { id: 'penWidthMm', label: 'Pen width (mm)', type: 'range', min: 0.1, max: 2.0, step: 0.1, value: 0.4 },
             { id: 'viewMode',   label: 'View mode', type: 'select', value: 'multiply',

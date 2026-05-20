@@ -424,6 +424,11 @@ window.sketches['whirls'] = function(p) {
         return c;
     }
 
+    function getCellHex(cell) {
+        var pal = PARAMS.palette.length ? PARAMS.palette : ['#000000'];
+        return pal[cell.colorIdx % pal.length];
+    }
+
     function drawCells(whirl, strokeW) {
         whirl.cells.forEach(function(cell) {
             p.noFill();
@@ -499,7 +504,7 @@ window.sketches['whirls'] = function(p) {
                 : whirls.filter(function(w){ return w.zIndex > whirl.zIndex; }).map(function(w){ return w.outline; });
 
             whirl.cells.forEach(function(cell) {
-                var color = getCellColor(cell);
+                var color = getCellHex(cell);
                 fillLinesForCell(cell).forEach(function(ln) {
                     var segs=[{x1:ln.x1,y1:ln.y1,x2:ln.x2,y2:ln.y2}];
                     clipOutlines.forEach(function(outline) {
