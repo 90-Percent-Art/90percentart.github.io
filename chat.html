@@ -2,58 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>90% Art -- Chat</title>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" crossorigin="anonymous">
-    <link rel="stylesheet" type="text/css" href="style.css">
-    <link rel="shortcut icon" href="assets/favicon.ico" type="image/x-icon">
-    <style>
-        /* Scoped to this page only -- doesn't touch the shared site styles. */
-        #chat-wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 60px; }
-        #chat-wrap h1 { font-size: 22px; margin-bottom: 4px; }
-        #chat-wrap .hint { color: #666; font-size: 13px; margin-bottom: 20px; }
-        #login-panel, #chat-panel { display: none; }
-        #login-panel.show, #chat-panel.show { display: block; }
-        #login-panel input[type="email"] { max-width: 340px; display: inline-block; }
-        #login-status { margin-top: 10px; font-size: 13.5px; color: #444; }
-        #chat-log { border: 1px solid #ddd; border-radius: 10px; padding: 14px; height: 420px; overflow-y: auto; margin-bottom: 12px; background: #fafafa; }
-        .chat-msg { padding: 8px 12px; border-radius: 9px; margin-bottom: 8px; max-width: 88%; font-size: 14px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
-        .chat-msg.user { background: #222; color: #fff; margin-left: auto; }
-        .chat-msg.assistant { background: #fff; border: 1px solid #ddd; }
-        .chat-msg.working { color: #888; font-style: italic; background: none; border: none; }
-        .chat-msg.error { background: #fbe3e3; border: 1px solid #e3a0a0; color: #7a2020; }
-        #chat-form { display: flex; gap: 8px; }
-        #chat-input { flex: 1; resize: vertical; min-height: 44px; }
-        #logout-row { text-align: right; margin-bottom: 10px; }
-        #logout-row button { font-size: 12.5px; }
-    </style>
+    <title>Redirecting…</title>
+    <meta http-equiv="refresh" content="0; url=orchestrator.html">
+    <link rel="canonical" href="orchestrator.html">
+    <script>
+        // Preserve a one-time sign-in token if someone hits an old chat.html?token=... link.
+        location.replace('orchestrator.html' + location.search);
+    </script>
 </head>
 <body>
-    <div class="container" id="chat-wrap">
-        <h1>90percentart -- Chat</h1>
-        <div class="hint">Talks to the orchestrator via Claude, hosted so it's reachable from anywhere. Sign-in required.</div>
-
-        <div id="login-panel">
-            <form id="login-form" class="form-inline">
-                <input type="email" id="login-email" class="form-control" placeholder="you@example.com" required>
-                <button type="submit" class="btn btn-outline-primary">Send sign-in link</button>
-            </form>
-            <div id="login-status"></div>
-        </div>
-
-        <div id="chat-panel">
-            <div id="logout-row">
-                <span id="logged-in-as"></span> &middot;
-                <button id="logout-btn" class="btn btn-sm btn-outline-secondary">Log out</button>
-            </div>
-            <div id="chat-log"></div>
-            <form id="chat-form">
-                <textarea id="chat-input" class="form-control" placeholder="Ask the orchestrator to do something..." required></textarea>
-                <button type="submit" id="chat-send" class="btn btn-primary">Send</button>
-            </form>
-        </div>
-    </div>
-
-    <script src="scripts/chat.js"></script>
+    <p>This page moved to <a href="orchestrator.html">orchestrator.html</a>.</p>
 </body>
 </html>
