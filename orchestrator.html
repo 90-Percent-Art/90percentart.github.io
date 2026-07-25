@@ -9,7 +9,7 @@
     <link rel="shortcut icon" href="assets/favicon.ico" type="image/x-icon">
     <style>
         /* Scoped to this page only -- doesn't touch the shared site styles. */
-        #orc-wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+        #orc-wrap { max-width: 1080px; margin: 0 auto; padding: 24px 16px 60px; }
         #orc-wrap h1 { font-size: 22px; margin-bottom: 4px; }
         #orc-wrap .hint { color: #666; font-size: 13px; margin-bottom: 20px; }
         #login-panel, #main-panel { display: none; }
@@ -23,21 +23,29 @@
         .card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
         .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #777; margin: 0 0 10px; font-weight: 700; }
 
-        #chat-log { border: 1px solid #ddd; border-radius: 10px; padding: 14px; height: 380px; overflow-y: auto; margin-bottom: 12px; background: #fafafa; }
+        #chat-log { border: 1px solid #ddd; border-radius: 10px; padding: 14px; height: 340px; overflow-y: auto; margin-bottom: 12px; background: #fafafa; }
         .chat-msg { padding: 8px 12px; border-radius: 9px; margin-bottom: 8px; max-width: 88%; font-size: 14px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
         .chat-msg.user { background: #222; color: #fff; margin-left: auto; }
         .chat-msg.assistant { background: #fff; border: 1px solid #ddd; }
         .chat-msg.working { color: #888; font-style: italic; background: none; border: none; }
         .chat-msg.error { background: #fbe3e3; border: 1px solid #e3a0a0; color: #7a2020; }
-        #chat-form { display: flex; gap: 8px; }
+        #chat-form { display: flex; gap: 8px; align-items: flex-end; }
         #chat-input { flex: 1; resize: vertical; min-height: 44px; }
+        #chat-model { max-width: 190px; flex-shrink: 0; }
 
         #offline-card { border-color: #e3c07a; background: #fdf8ec; display: none; }
         #offline-card.show { display: block; }
         #offline-card a { font-weight: 600; }
 
-        .stat-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; font-size: 12.5px; color: #555; }
-        .stat-row b { color: #222; }
+        .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+        @media (max-width: 720px) { .stat-row { grid-template-columns: 1fr; } }
+        .stat-row .card { margin-bottom: 0; }
+        .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #999; margin-bottom: 6px; font-weight: 700; }
+        .stat-value { font-size: 18px; font-weight: 700; }
+        .stat-meta { font-size: 12px; color: #888; margin-top: 2px; }
+
+        .main-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: start; }
+        @media (max-width: 860px) { .main-grid { grid-template-columns: 1fr; } }
 
         .tag { font-family: monospace; font-size: 10px; font-weight: 700; letter-spacing: .03em; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; text-transform: uppercase; display: inline-block; margin-right: 6px; }
         .tag.idea { background: #f5e6c8; color: #8a6a1f; }
@@ -45,22 +53,55 @@
         .tag.auto { background: #cdeed6; color: #2c7a44; }
         .tag.blocked { background: #f5cfcf; color: #8a2f2f; }
         .tag.done { background: #e5e5e5; color: #777; }
-        .rating { font-family: monospace; font-size: 10.5px; color: #2f5f8a; margin-left: 6px; }
 
         details.orc-section { margin-bottom: 14px; }
         details.orc-section > summary { cursor: pointer; font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #444; }
         ul.orc-items { list-style: none; margin: 0; padding: 0; }
-        ul.orc-items li { padding: 8px 0; border-bottom: 1px solid #eee; font-size: 13.5px; }
+        ul.orc-items li { padding: 10px 0; border-bottom: 1px solid #eee; font-size: 13.5px; }
         ul.orc-items li:last-child { border-bottom: none; }
         .orc-empty { color: #888; font-size: 13px; font-style: italic; padding: 8px 0; }
         .orc-note { font-size: 13px; padding: 6px 0; border-bottom: 1px solid #eee; }
         .orc-note:last-child { border-bottom: none; }
+
+        .rate-row { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-family: monospace; }
+        .rate-row .rate-label { font-size: 10px; color: #999; width: 60px; }
+        .rate-row button { background: none; border: none; padding: 0 1px; margin: 0; cursor: pointer; font-size: 12px; color: #ddd; }
+        .rate-row button.filled { color: #2f5f8a; }
+        .rate-row button:hover { color: #2f5f8a; }
+        .rate-row .clear-btn { font-size: 10px; color: #999; text-decoration: underline; margin-left: 6px; font-family: inherit; }
+
+        .comment-list { list-style: none; margin: 6px 0 4px; padding: 0; }
+        .comment-list li { font-size: 12px; color: #666; background: #f7f7f7; border-radius: 5px; padding: 4px 8px; margin-bottom: 3px; }
+        .comment-list li.mandate { border-left: 2px solid #c1481f; }
+        .comment-toggle { font-size: 11px; color: #2f5f8a; background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; margin-top: 4px; }
+        .comment-form { display: none; gap: 6px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+        .comment-form.open { display: flex; }
+        .comment-form input[type="text"] { flex: 1; min-width: 120px; padding: 4px 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 12.5px; }
+        .comment-form button { font-size: 12px; padding: 4px 10px; }
+        .comment-form label { font-size: 11px; color: #888; margin: 0; }
+
+        .task-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 13px; }
+        .task-row:last-child { border-bottom: none; }
+        .task-row .sched { font-family: monospace; font-size: 11.5px; color: #888; }
+        .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+        .pill.good { background: #cdeed6; color: #2c7a44; }
+        .pill.crit { background: #f5cfcf; color: #8a2f2f; }
+        .pill.warn { background: #f5e6c8; color: #8a6a1f; }
+        .pill.info { background: #cfe3f5; color: #2f5f8a; }
+
+        .run-now-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; }
+        .run-now-status { font-size: 12px; color: #888; font-family: monospace; }
+
+        .feedback-form textarea { width: 100%; min-height: 60px; padding: 8px 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 13px; resize: vertical; margin-bottom: 8px; }
+        .feedback-form .mandate-toggle { font-size: 12px; color: #888; margin-right: 10px; }
+        .save-flash { font-size: 11.5px; color: #2c7a44; margin-left: 8px; opacity: 0; transition: opacity .2s; }
+        .save-flash.show { opacity: 1; }
     </style>
 </head>
 <body>
     <div class="container" id="orc-wrap">
         <h1>90percentart -- Orchestrator</h1>
-        <div class="hint">The chat, plus a read-only view of the backlog/notes/state you'd otherwise only see by cloning the repo. Sign-in required.</div>
+        <div class="hint">Same chat, backlog, notes, and controls as the local dashboard -- just reachable from anywhere. Sign-in required.</div>
 
         <div id="login-panel">
             <form id="login-form" class="form-inline">
@@ -78,7 +119,7 @@
 
             <div class="card" id="offline-card">
                 <b>The PC's relay isn't reachable right now</b> (it's off, or the tunnel's down) --
-                chat and live data need it. Here's the last
+                chat and live actions need it. Here's the last
                 <a href="https://claude.ai/code/artifact/03d42013-1931-4774-9494-b55501070f39" target="_blank" rel="noopener">hourly snapshot</a>
                 instead, refreshed automatically whenever the orchestrator runs.
             </div>
@@ -88,34 +129,62 @@
                 <div id="chat-log"></div>
                 <form id="chat-form">
                     <textarea id="chat-input" class="form-control" placeholder="Ask the orchestrator to do something..." required></textarea>
+                    <select id="chat-model" class="form-control"></select>
                     <button type="submit" id="chat-send" class="btn btn-primary">Send</button>
                 </form>
             </div>
 
-            <div class="card" id="status-card">
-                <h2>Status</h2>
-                <div class="stat-row" id="status-line">Loading…</div>
+            <div class="stat-row">
+                <div class="card"><div class="stat-label">Budget</div><div class="stat-value" id="stat-budget">--</div><div class="stat-meta" id="stat-budget-meta"></div></div>
+                <div class="card"><div class="stat-label">Pi auto-sync</div><div class="stat-value" id="stat-sync">--</div><div class="stat-meta" id="stat-sync-meta"></div></div>
+                <div class="card"><div class="stat-label">State last updated</div><div class="stat-value" id="stat-updated">--</div><div class="stat-meta" id="stat-updated-meta"></div></div>
             </div>
 
-            <div class="card" id="backlog-card">
-                <h2>Backlog</h2>
-                <div id="backlog-body"></div>
-            </div>
+            <div class="main-grid">
+                <div>
+                    <div class="card" id="backlog-card">
+                        <h2>Backlog</h2>
+                        <div id="backlog-body"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card" id="tasks-card">
+                        <h2>Scheduled tasks (PC)</h2>
+                        <div id="tasks-body"></div>
+                        <div class="run-now-row">
+                            <button id="run-now-btn" class="btn btn-sm btn-success">&#9654; Run orchestrator now</button>
+                            <span id="run-now-status" class="run-now-status"></span>
+                        </div>
+                    </div>
 
-            <div class="card" id="notes-card">
-                <h2>Notes</h2>
-                <details class="orc-section" open>
-                    <summary>Open (unhandled feedback)</summary>
-                    <div id="notes-open"></div>
-                </details>
-                <details class="orc-section">
-                    <summary>Reviewed, not finished</summary>
-                    <div id="notes-reviewed"></div>
-                </details>
-                <details class="orc-section">
-                    <summary>Recently handled</summary>
-                    <div id="notes-handled"></div>
-                </details>
+                    <div class="card">
+                        <h2>Leave feedback</h2>
+                        <form class="feedback-form" id="feedback-form">
+                            <textarea name="note" placeholder="Leave a note for the next run to pick up..." required></textarea>
+                            <div>
+                                <button type="submit" class="btn btn-sm btn-primary">Add to notes</button>
+                                <label class="mandate-toggle"><input type="checkbox" name="mandate" /> &#9889; Do this now</label>
+                                <span class="save-flash" id="note-flash">Added &#10003;</span>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card" id="notes-card">
+                        <h2>Notes</h2>
+                        <details class="orc-section" open>
+                            <summary>Open (unhandled feedback)</summary>
+                            <div id="notes-open"></div>
+                        </details>
+                        <details class="orc-section">
+                            <summary>Reviewed, not finished</summary>
+                            <div id="notes-reviewed"></div>
+                        </details>
+                        <details class="orc-section">
+                            <summary>Recently handled</summary>
+                            <div id="notes-handled"></div>
+                        </details>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
