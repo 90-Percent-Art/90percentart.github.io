@@ -50,9 +50,10 @@ async function api(path, opts = {}) {
 
 async function loadHistory() {
     try {
-        const { history } = await api('/api/history');
+        const { history, reachable } = await api('/api/history');
         chatLog.innerHTML = '';
-        (history || []).forEach((m) => appendMsg(m.role, m.content));
+        (history || []).forEach((m) => appendMsg(m.role, m.text));
+        if (reachable === false) appendMsg('error', 'No relay machine is reachable right now -- is it powered on and connected?');
     } catch (e) {
         appendMsg('error', `Couldn't load history: ${e.message}`);
     }
