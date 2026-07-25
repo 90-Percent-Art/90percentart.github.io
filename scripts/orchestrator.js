@@ -26,6 +26,7 @@ const notesReviewed = document.getElementById('notes-reviewed');
 const notesHandled = document.getElementById('notes-handled');
 
 let runStatusTimer = null;
+let chatStatusTimer = null;
 
 function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -71,7 +72,7 @@ async function api(path, opts = {}) {
 
 async function loadHistory() {
     try {
-        const { history, models, selectedModel, reachable } = await api('/api/history');
+        const { history, models, selectedModel, running, reachable } = await api('/api/history');
         chatLog.innerHTML = '';
         (history || []).forEach((m) => appendMsg(m.role, m.text));
         if (models && models.length) {
@@ -79,6 +80,13 @@ async function loadHistory() {
             if (selectedModel) chatModel.value = selectedModel;
         }
         if (reachable === false) appendMsg('error', 'No relay machine is reachable right now -- is it powered on and connected?');
+        else if (running) {
+            // A turn was still in flight when the page (re)loaded -- resume polling
+            // instead of leaving it looking idle until the next manual send.
+            chatSend.disabled = true;
+            const working = appendMsg('working', 'Thinking... (a real Claude Code turn -- can take a bit)');
+            pollChatStatus(working);
+        }
     } catch (e) {
         appendMsg('error', `Couldn't load history: ${e.message}`);
     }
@@ -139,11 +147,15 @@ function commentBlockHtml(id, comments) {
         </div>`;
 }
 
-function rateRowHtml(id, evanRating) {
+function rateRowHtml(id, evanRating, seen) {
     const dots = [1, 2, 3, 4, 5].map((n) =>
         `<button type="button" class="rate-btn ${n <= (evanRating || 0) ? 'filled' : ''}" data-id="${esc(id)}" data-score="${n}" title="Rate ${n}/5">&#9679;</button>`
     ).join('');
-    return `<div class="rate-row"><span class="rate-label">you</span>${dots}${evanRating ? `<button type="button" class="clear-btn" data-id="${esc(id)}" data-score="0">clear</button>` : ''}</div>`;
+    return `<div class="rate-row"><span class="rate-label">you</span>${dots}${evanRating ? `<button type="button" class="clear-btn" data-id="${esc(id)}" data-score="0">clear</button>` : ''}
+        <label class="seen-toggle" title="Mark as seen even without rating/commenting -- so it doesn't read as still-unseen.">
+            <input type="checkbox" class="seen-check" data-id="${esc(id)}" ${seen ? 'checked' : ''} /> seen
+        </label>
+    </div>`;
 }
 
 function renderBacklog(sections) {
@@ -151,19 +163,26 @@ function renderBacklog(sections) {
         backlogBody.innerHTML = '<div class="orc-empty">Nothing here yet.</div>';
         return;
     }
-    backlogBody.innerHTML = sections.map((sec) => `
-        <details class="orc-section" open>
-            <summary>${esc(sec.section)}</summary>
-            ${sec.items.length
+    backlogBody.innerHTML = sections.map((sec) => {
+        const total = sec.items.length;
+        const unseen = sec.items.filter((it) => !it.seen).length;
+        const badge = unseen > 0
+            ? `<span class="count-badge unseen">${unseen} unseen</span><span class="count-badge">${total} total</span>`
+            : `<span class="count-badge">${total}</span>`;
+        return `
+        <details class="orc-section">
+            <summary>${esc(sec.section)} ${badge}</summary>
+            ${total
                 ? `<ul class="orc-items">${sec.items.map((it) => `
                     <li>
                         <span class="tag ${esc(it.tag)}">${esc(it.tag)}</span>
                         ${esc(it.text)}
-                        ${rateRowHtml(it.id, it.evanRating)}
+                        ${rateRowHtml(it.id, it.evanRating, it.seen)}
                         ${commentBlockHtml(it.id, it.comments)}
                     </li>`).join('')}</ul>`
                 : '<div class="orc-empty">Nothing here yet.</div>'}
-        </details>`).join('');
+        </details>`;
+    }).join('');
 }
 
 function renderTasks(scheduledTasks) {
@@ -178,7 +197,8 @@ function renderTasks(scheduledTasks) {
         </div>`).join('');
 }
 
-function renderNoteList(el, notes) {
+function renderNoteList(el, badgeEl, notes) {
+    if (badgeEl) badgeEl.textContent = String((notes || []).length);
     if (!notes || !notes.length) {
         el.innerHTML = '<div class="orc-empty">Nothing here.</div>';
         return;
@@ -201,9 +221,9 @@ async function loadSnapshot() {
         renderBacklog(snapshot.backlog);
         renderTasks(snapshot.state && snapshot.state.scheduledTasks);
         const notes = snapshot.notes || {};
-        renderNoteList(notesOpen, notes.open);
-        renderNoteList(notesReviewed, notes.reviewed);
-        renderNoteList(notesHandled, notes.handled);
+        renderNoteList(notesOpen, document.getElementById('count-notes-open'), notes.open);
+        renderNoteList(notesReviewed, document.getElementById('count-notes-reviewed'), notes.reviewed);
+        renderNoteList(notesHandled, document.getElementById('count-notes-handled'), notes.handled);
     } catch (e) {
         offlineCard.classList.add('show');
     }
@@ -279,28 +299,54 @@ loginForm.addEventListener('submit', async (e) => {
 logoutBtn.addEventListener('click', async () => {
     try { await api('/api/logout', { method: 'POST' }); } catch { /* best effort */ }
     if (runStatusTimer) clearTimeout(runStatusTimer);
+    if (chatStatusTimer) clearTimeout(chatStatusTimer);
     showLogin();
 });
+
+// Polls /api/chat-status client-side rather than the Worker polling internally --
+// each poll is its own Worker invocation with a fresh subrequest budget, so a long
+// turn (real Claude Code work can take minutes) can't hit Cloudflare's per-invocation
+// subrequest limit the way a single long-lived server-side poll loop did.
+function pollChatStatus(working) {
+    chatStatusTimer = setTimeout(async () => {
+        try {
+            const data = await api('/api/chat-status');
+            if (data.running) {
+                pollChatStatus(working);
+                return;
+            }
+            working.remove();
+            const history = data.history || [];
+            const last = history[history.length - 1];
+            if (last && last.role === 'assistant') appendMsg('assistant', last.text, last.model);
+            else appendMsg('error', '(no reply)');
+            loadSnapshot(); // a chat turn may have changed backlog/notes -- refresh the read-only view
+        } catch (err) {
+            working.remove();
+            appendMsg('error', err.message);
+        } finally {
+            chatSend.disabled = false;
+            chatInput.focus();
+        }
+    }, 3000);
+}
 
 chatForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const message = chatInput.value.trim();
     if (!message) return;
     const modelId = chatModel.value;
-    const modelLabel = chatModel.options[chatModel.selectedIndex] ? chatModel.options[chatModel.selectedIndex].textContent : '';
     appendMsg('user', message);
     chatInput.value = '';
     chatSend.disabled = true;
-    const working = appendMsg('working', 'Thinking...');
+    const working = appendMsg('working', 'Thinking... (a real Claude Code turn -- can take a bit)');
     try {
-        const { reply } = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message, model: modelId }) });
-        working.remove();
-        appendMsg('assistant', reply, modelLabel);
-        loadSnapshot(); // a chat turn may have changed backlog/notes -- refresh the read-only view
+        const result = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message, model: modelId }) });
+        if (!result.started) throw new Error(result.reason || 'could not start');
+        pollChatStatus(working);
     } catch (e2) {
         working.remove();
         appendMsg('error', e2.message);
-    } finally {
         chatSend.disabled = false;
         chatInput.focus();
     }
@@ -346,7 +392,7 @@ feedbackForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Delegated handlers for dynamically-rendered backlog items (ratings + comments).
+// Delegated handlers for dynamically-rendered backlog items (ratings + comments + seen).
 backlogBody.addEventListener('click', async (e) => {
     const rateBtn = e.target.closest('.rate-btn, .clear-btn');
     if (rateBtn) {
@@ -357,6 +403,18 @@ backlogBody.addEventListener('click', async (e) => {
             loadSnapshot();
         } catch (err) {
             alert(`Couldn't save rating: ${err.message}`);
+        }
+        return;
+    }
+    const seenCheck = e.target.closest('.seen-check');
+    if (seenCheck) {
+        const id = seenCheck.dataset.id;
+        const seen = seenCheck.checked;
+        try {
+            await api('/api/seen', { method: 'POST', body: JSON.stringify({ id, seen }) });
+            loadSnapshot();
+        } catch (err) {
+            alert(`Couldn't update seen state: ${err.message}`);
         }
         return;
     }

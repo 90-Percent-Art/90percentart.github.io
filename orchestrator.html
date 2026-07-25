@@ -75,6 +75,12 @@
         .rate-row button.filled { color: #2f5f8a; }
         .rate-row button:hover { color: #2f5f8a; }
         .rate-row .clear-btn { font-size: 10px; color: #999; text-decoration: underline; margin-left: 6px; font-family: inherit; }
+        .rate-row .seen-toggle { margin-left: 10px; display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #999; cursor: pointer; }
+        .rate-row .seen-toggle input { cursor: pointer; }
+
+        details.orc-section > summary { display: flex; align-items: center; gap: 8px; }
+        .count-badge { font-family: monospace; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #eee; color: #888; }
+        .count-badge.unseen { background: #cfe3f5; color: #2f5f8a; }
 
         .comment-list { list-style: none; margin: 6px 0 4px; padding: 0; }
         .comment-list li { font-size: 12px; color: #666; background: #f7f7f7; border-radius: 5px; padding: 4px 8px; margin-bottom: 3px; }
@@ -188,16 +194,16 @@
                     <div class="card" id="notes-card">
                         <span class="info-icon" title="Feedback for the orchestrator, tiered by status: Open (unhandled) -> Reviewed (in progress) -> Handled (acted on). Add a note with the form above; check 'do this now' to flag it as a priority for the next run instead of waiting its turn.">?</span>
                         <h2>Notes</h2>
-                        <details class="orc-section" open>
-                            <summary>Open (unhandled feedback)</summary>
+                        <details class="orc-section">
+                            <summary>Open (unhandled feedback) <span class="count-badge" id="count-notes-open">0</span></summary>
                             <div id="notes-open"></div>
                         </details>
                         <details class="orc-section">
-                            <summary>Reviewed, not finished</summary>
+                            <summary>Reviewed, not finished <span class="count-badge" id="count-notes-reviewed">0</span></summary>
                             <div id="notes-reviewed"></div>
                         </details>
                         <details class="orc-section">
-                            <summary>Recently handled</summary>
+                            <summary>Recently handled <span class="count-badge" id="count-notes-handled">0</span></summary>
                             <div id="notes-handled"></div>
                         </details>
                     </div>
@@ -206,6 +212,6 @@
         </div>
     </div>
 
-    <script src="scripts/orchestrator.js?v=3"></script>
+    <script src="scripts/orchestrator.js?v=4"></script>
 </body>
 </html>
