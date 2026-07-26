@@ -70,13 +70,17 @@
         .orc-note:last-child { border-bottom: none; }
 
         .rate-row { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-family: monospace; }
-        .rate-row .rate-label { font-size: 10px; color: #999; width: 60px; }
+        .rate-row .rate-label { font-size: 10px; color: #999; width: 66px; flex-shrink: 0; }
         .rate-row button { background: none; border: none; padding: 0 1px; margin: 0; cursor: pointer; font-size: 12px; color: #ddd; }
         .rate-row button.filled { color: #2f5f8a; }
         .rate-row button:hover { color: #2f5f8a; }
         .rate-row .clear-btn { font-size: 10px; color: #999; text-decoration: underline; margin-left: 6px; font-family: inherit; }
         .rate-row .seen-toggle { margin-left: 10px; display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #999; cursor: pointer; }
         .rate-row .seen-toggle input { cursor: pointer; }
+        .rate-row .seen-toggle input:disabled { cursor: default; }
+        .static-dots { font-size: 12px; }
+        .static-dots .dot { opacity: .25; }
+        .static-dots .dot.filled { opacity: 1; color: #c1481f; }
 
         details.orc-section > summary { display: flex; align-items: center; gap: 8px; }
         .count-badge { font-family: monospace; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #eee; color: #888; }
@@ -212,6 +216,6 @@
         </div>
     </div>
 
-    <script src="scripts/orchestrator.js?v=4"></script>
+    <script src="scripts/orchestrator.js?v=5"></script>
 </body>
 </html>

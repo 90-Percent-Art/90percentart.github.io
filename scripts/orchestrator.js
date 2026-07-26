@@ -147,13 +147,28 @@ function commentBlockHtml(id, comments) {
         </div>`;
 }
 
-function rateRowHtml(id, evanRating, seen) {
+function staticDots(n) {
+    return Array.from({ length: 5 }, (_, i) => `<span class="dot${i < n ? ' filled' : ''}">&#9679;</span>`).join('');
+}
+
+// Two independent 5-star rows, same as the local dashboard: the orchestrator's
+// own read-only priority read (unrelated to urgency) and your own interactive
+// rating. They don't conflict -- separate fields (BACKLOG.md's [P#] vs [E#]).
+function rateRowHtml(id, priority, evanRating, seen, seenManual) {
+    const orchestratorRow = priority
+        ? `<div class="rate-row"><span class="rate-label">orchestrator</span><span class="static-dots" title="Orchestrator's own quality/readiness read -- not urgency">${staticDots(priority)}</span></div>`
+        : '';
     const dots = [1, 2, 3, 4, 5].map((n) =>
         `<button type="button" class="rate-btn ${n <= (evanRating || 0) ? 'filled' : ''}" data-id="${esc(id)}" data-score="${n}" title="Rate ${n}/5">&#9679;</button>`
     ).join('');
-    return `<div class="rate-row"><span class="rate-label">you</span>${dots}${evanRating ? `<button type="button" class="clear-btn" data-id="${esc(id)}" data-score="0">clear</button>` : ''}
-        <label class="seen-toggle" title="Mark as seen even without rating/commenting -- so it doesn't read as still-unseen.">
-            <input type="checkbox" class="seen-check" data-id="${esc(id)}" ${seen ? 'checked' : ''} /> seen
+    // Auto-seen (rated or commented) shows as checked+disabled -- matches the local
+    // dashboard: only an explicit manual mark is independently toggleable.
+    const autoSeen = seen && !seenManual;
+    return `
+    ${orchestratorRow}
+    <div class="rate-row"><span class="rate-label">you</span>${dots}${evanRating ? `<button type="button" class="clear-btn" data-id="${esc(id)}" data-score="0">clear</button>` : ''}
+        <label class="seen-toggle" title="${autoSeen ? 'Already counted as seen -- you rated or commented on this.' : 'Mark as seen without rating or commenting -- so it doesn\'t read as still-unseen.'}">
+            <input type="checkbox" class="seen-check" data-id="${esc(id)}" ${seen ? 'checked' : ''} ${autoSeen ? 'disabled' : ''} /> seen
         </label>
     </div>`;
 }
@@ -177,7 +192,7 @@ function renderBacklog(sections) {
                     <li>
                         <span class="tag ${esc(it.tag)}">${esc(it.tag)}</span>
                         ${esc(it.text)}
-                        ${rateRowHtml(it.id, it.evanRating, it.seen)}
+                        ${rateRowHtml(it.id, it.priority, it.evanRating, it.seen, it.seenManual)}
                         ${commentBlockHtml(it.id, it.comments)}
                     </li>`).join('')}</ul>`
                 : '<div class="orc-empty">Nothing here yet.</div>'}
